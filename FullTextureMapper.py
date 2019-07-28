@@ -30,10 +30,7 @@ class PerspectiveCamera(object):
                            camera_spec[11],
                            camera_spec[12]]).transpose()
 
-        # c = -np.dot(np.transpose(self.R), self.t)
-        # # X90 = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
         X180 = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-        # # self.R = np.dot(np.dot(X90, self.R), np.transpose(X90))
         self.R = np.dot(X180, self.R)
         self.t = np.dot(X180, self.t)
         
@@ -44,29 +41,19 @@ class PerspectiveCamera(object):
         camera_pos = -np.dot(np.transpose(self.R), self.t)
         view_dir = np.dot(np.transpose(self.R),
                           np.array([[0.0], [0.0], [-1.0]]))
-        print 'R:', self.R
-        print 'view_dir:', view_dir
         scene_distance = -np.dot(np.transpose(camera_pos), view_dir)
-        print 'scene_distance:', scene_distance
-        # print(self.pose)
 
-        # camera_norm = np.linalg.norm(self.t)
         znear = max(scene_distance - 1e5, 1.0)
         zfar = scene_distance + 1e5
-        print image_name
-        print 'znear:', znear, 'zfar:', zfar
-        print 'fx:', camera_spec[2], 'fy:', camera_spec[3]
-        print 'cx:', camera_spec[4], 'cy:', camera_spec[5]
-        # print 'camera_norm:', camera_norm
+
+        # print image_name
+        # print 'znear:', znear, 'zfar:', zfar
+        # print 'fx:', camera_spec[2], 'fy:', camera_spec[3]
+        # print 'cx:', camera_spec[4], 'cy:', camera_spec[5]
         self.pyrender_camera = pyrender.IntrinsicsCamera(
             fx=camera_spec[2], fy=camera_spec[3],
-            # fx=0.5*self.width, fy=0.5*self.height,
-            # cx=camera_spec[4], cy=(self.height - camera_spec[5]),
             cx=camera_spec[4], cy=camera_spec[5],
-            # znear=1000.0, zfar=1.0e8, name=image_name)
             znear=znear, zfar=zfar, name=image_name)
-        # self.pyrender_camera = pyrender.PerspectiveCamera(
-        #     yfov=0.75 * np.pi, znear=1000.0, zfar=None, name=image_name)
 
     def project(self, point):
         proj3 = np.dot(self.K, np.dot(self.R, np.transpose(point)) + self.t)
@@ -169,7 +156,6 @@ class FullTextureMapper(object):
         width = 2000
         height = 2000
         renderer = pyrender.OffscreenRenderer(width, height)
-        # test_camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0)
         test_camera = pyrender.IntrinsicsCamera(
             fx=866.0 * 1000.0, fy=866.0 * 1000.0, cx=1000.0, cy=1000.0,
             znear=1000.0, zfar=1.0e8)
@@ -177,11 +163,6 @@ class FullTextureMapper(object):
                                      [0, 1, 0, 0],
                                      [0, 0, 1, 1.0e6],
                                      [0, 0, 0, 1]])
-
-        print 'camera_pose:'
-        print test_camera_pose
-        print 'pyrender_camera.get_projection():'
-        print test_camera.get_projection_matrix(width, height)
 
         self.scene.add(test_camera, pose=test_camera_pose)
         # light = pyrender.SpotLight(color=np.ones(3),
@@ -194,21 +175,11 @@ class FullTextureMapper(object):
 
     def test_rendering_on_real_camera(self):
         image, camera = (self.reconstruction.cameras.items())[1]
-        # vertices_utm = np.stack((self.vertices['x'],
-        #                          self.vertices['y'],
-        #                          self.vertices['z']), axis=1)
-        # vertices_enu = self.reconstruction.utm_to_enu(vertices_utm)
 
         print 'camera.K:', camera.K
         print 'camera.pose:', camera.pose
-        # print 'vertices_enu:', vertices_enu[0,:]
-        # print 'projection:', camera.project(vertices_enu[0,:])
-        # print 'pyrender_camera.get_projection():'
-        # print camera.pyrender_camera.get_projection_matrix(
-        #     camera.width, camera.height)
         
         renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
-        # renderer = pyrender.OffscreenRenderer(2000, 2000)
 
         self.scene.add(camera.pyrender_camera, pose=camera.pose)
         # light = pyrender.SpotLight(color=np.ones(3),
