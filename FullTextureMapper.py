@@ -15,6 +15,7 @@ from satellite_stereo.lib import latlon_utm_converter
 from satellite_stereo.lib import latlonalt_enu_converter
 from satellite_stereo.lib.plyfile import PlyData, PlyElement
 
+# Transform a depth map to the range [0,255] and save to file 'image_name'.
 def save_depth_image(depth, image_name):
     # Depth of zero is a sentinel value.
     depth_masked = np.ma.masked_equal(depth, 0.0)
@@ -23,6 +24,7 @@ def save_depth_image(depth, image_name):
     depth_normalized = (255 * (depth_masked - depth_min) /
                         (depth_max - depth_min)).filled(0).astype(np.uint8)
     png.from_array(depth_normalized, 'L').save(image_name)
+
 
 class PerspectiveCamera(object):
     def __init__(self, image_name, camera_spec):
@@ -147,17 +149,6 @@ class FullTextureMapper(object):
         self.mesh = pyrender.Mesh.from_trimesh(tmesh)
         self.scene = pyrender.Scene()
         self.scene.add(self.mesh)
-
-        # camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0,
-        #                                     aspectRatio=1.0)
-        # s = np.sqrt(2)/2
-        # camera_pose = np.array([
-        #    [0.0, -s,   s,   0.3],
-        #    [1.0,  0.0, 0.0, 0.0],
-        #    [0.0,  s,   s,   0.35],
-        #    [0.0,  0.0, 0.0, 1.0],
-        #    ])
-        # scene.add(camera, pose=camera_pose)
 
         self.ply_textured = None
         # self.texture_ply()
