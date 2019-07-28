@@ -146,8 +146,10 @@ class FullTextureMapper(object):
         print 'tmesh.vertices_enu:', vertices_enu[0:2, :]
         tmesh.vertices = vertices_enu
 
-        # Are face colors preserved after pyrender conversion?
+        # Recolor the facets.
         for facet in tmesh.facets:
+            # Random trimesh colors have random hue but nearly full
+            # saturation and value.
             tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
         
         self.mesh = pyrender.Mesh.from_trimesh(tmesh, smooth=False)
@@ -182,6 +184,42 @@ class FullTextureMapper(object):
         png.from_array(color, 'RGB').save('test_render.png')
         save_depth_image(depth, image + '_depth.png')
 
+    def add_lighting(self):
+        # Add six directional lights along all axes to simulate
+        # ambient lighting.
+        pose1 = np.array([[1, 0, 0, 0],
+                          [0, 1, 0, 0],
+                          [0, 0, 1, 0],
+                          [0, 0, 0, 1]])
+        pose2 = np.array([[1, 0, 0, 0],
+                          [0, -1, 0, 0],
+                          [0, 0, -1, 0],
+                          [0, 0, 0, 1]])
+        pose3 = np.array([[1, 0, 0, 0],
+                          [0, 0, 1, 0],
+                          [0, -1, 0, 0],
+                          [0, 0, 0, 1]])
+        pose4 = np.array([[1, 0, 0, 0],
+                          [0, 0, -1, 0],
+                          [0, 1, 0, 0],
+                          [0, 0, 0, 1]])
+        pose5 = np.array([[0, 0, 1, 0],
+                          [0, 1, 0, 0],
+                          [-1, 0, 0, 0],
+                          [0, 0, 0, 1]])
+        pose6 = np.array([[0, 0, -1, 0],
+                          [0, 1, 0, 0],
+                          [1, 0, 0, 0],
+                          [0, 0, 0, 1]])
+
+        light = pyrender.DirectionalLight(color=np.ones(3), intensity=3.0)
+        self.scene.add(light, pose=pose1)
+        self.scene.add(light, pose=pose2)
+        self.scene.add(light, pose=pose3)
+        self.scene.add(light, pose=pose4)
+        self.scene.add(light, pose=pose5)
+        self.scene.add(light, pose=pose6)
+
     def test_rendering_on_real_camera(self):
         image, camera = (self.reconstruction.cameras.items())[1]
         print 'rendering image', image
@@ -190,8 +228,7 @@ class FullTextureMapper(object):
 
         self.scene.add(camera.pyrender_camera, pose=camera.pose)
 
-        light = pyrender.DirectionalLight(color=np.ones(3), intensity=1.0)
-        self.scene.add(light, pose=camera.pose)
+        self.add_lighting()
         
         color, depth = renderer.render(self.scene)
         png.from_array(color, 'RGB').save(image + '_render.png')
