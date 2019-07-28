@@ -145,8 +145,12 @@ class FullTextureMapper(object):
         vertices_enu = self.reconstruction.utm_to_enu(tmesh.vertices)
         print 'tmesh.vertices_enu:', vertices_enu[0:2, :]
         tmesh.vertices = vertices_enu
+
+        # Are face colors preserved after pyrender conversion?
+        for facet in tmesh.facets:
+            tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
         
-        self.mesh = pyrender.Mesh.from_trimesh(tmesh)
+        self.mesh = pyrender.Mesh.from_trimesh(tmesh, smooth=False)
         self.scene = pyrender.Scene()
         self.scene.add(self.mesh)
 
@@ -180,17 +184,15 @@ class FullTextureMapper(object):
 
     def test_rendering_on_real_camera(self):
         image, camera = (self.reconstruction.cameras.items())[1]
-
-        print 'camera.K:', camera.K
-        print 'camera.pose:', camera.pose
+        print 'rendering image', image
         
         renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
 
         self.scene.add(camera.pyrender_camera, pose=camera.pose)
-        # light = pyrender.SpotLight(color=np.ones(3),
-        #                            intensity=3.0,
-        #                            innerConeAngle=np.pi/16.0)
-        # self.scene.add(light, pose=camera.pose)
+
+        light = pyrender.DirectionalLight(color=np.ones(3), intensity=1.0)
+        self.scene.add(light, pose=camera.pose)
+        
         color, depth = renderer.render(self.scene)
         png.from_array(color, 'RGB').save(image + '_render.png')
         save_depth_image(depth, image + '_depth.png')
