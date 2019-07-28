@@ -41,22 +41,30 @@ class PerspectiveCamera(object):
             (np.concatenate((self.R, np.expand_dims(self.t, axis=1)), axis=1),
              np.array([[0, 0, 0, 1]])), axis=0)
         self.pose = np.linalg.inv(self.pose)
+        camera_pos = -np.dot(np.transpose(self.R), self.t)
+        view_dir = np.dot(np.transpose(self.R),
+                          np.array([[0.0], [0.0], [-1.0]]))
+        print 'R:', self.R
+        print 'view_dir:', view_dir
+        scene_distance = -np.dot(np.transpose(camera_pos), view_dir)
+        print 'scene_distance:', scene_distance
         # print(self.pose)
 
-        camera_norm = np.linalg.norm(self.t)
-        znear = max(camera_norm - 1000.0, 1.0)
-        zfar = camera_norm + 1000.0
-        # print 'znear:', znear, 'zfar:', zfar
+        # camera_norm = np.linalg.norm(self.t)
+        znear = max(scene_distance - 1e5, 1.0)
+        zfar = scene_distance + 1e5
+        print image_name
+        print 'znear:', znear, 'zfar:', zfar
         print 'fx:', camera_spec[2], 'fy:', camera_spec[3]
         print 'cx:', camera_spec[4], 'cy:', camera_spec[5]
-        print 'camera_norm:', camera_norm
+        # print 'camera_norm:', camera_norm
         self.pyrender_camera = pyrender.IntrinsicsCamera(
             fx=camera_spec[2], fy=camera_spec[3],
             # fx=0.5*self.width, fy=0.5*self.height,
             # cx=camera_spec[4], cy=(self.height - camera_spec[5]),
             cx=camera_spec[4], cy=camera_spec[5],
-            znear=1000.0, zfar=1.0e8, name=image_name)
-        #             znear=znear, zfar=zfar, name=image_name)
+            # znear=1000.0, zfar=1.0e8, name=image_name)
+            znear=znear, zfar=zfar, name=image_name)
         # self.pyrender_camera = pyrender.PerspectiveCamera(
         #     yfov=0.75 * np.pi, znear=1000.0, zfar=None, name=image_name)
 
