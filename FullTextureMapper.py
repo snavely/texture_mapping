@@ -15,6 +15,15 @@ from satellite_stereo.lib import latlon_utm_converter
 from satellite_stereo.lib import latlonalt_enu_converter
 from satellite_stereo.lib.plyfile import PlyData, PlyElement
 
+def save_depth_image(depth, image_name):
+    # Depth of zero is a sentinel value.
+    depth_masked = np.ma.masked_equal(depth, 0.0)
+    depth_min = depth_masked.min(axis=0).min(axis=0)
+    depth_max = depth_masked.max(axis=0).max(axis=0)
+    depth_normalized = (255 * (depth_masked - depth_min) /
+                        (depth_max - depth_min)).filled(0).astype(np.uint8)
+    png.from_array(depth_normalized, 'L').save(image_name)
+
 class PerspectiveCamera(object):
     def __init__(self, image_name, camera_spec):
         self.image_name = image_name
@@ -38,6 +47,10 @@ class PerspectiveCamera(object):
             (np.concatenate((self.R, np.expand_dims(self.t, axis=1)), axis=1),
              np.array([[0, 0, 0, 1]])), axis=0)
         self.pose = np.linalg.inv(self.pose)
+
+        # Compute a reasonable zNear and zFar, based on the projection
+        # of the camera location on the (negative) viewing direction,
+        # assuming that the scene is located near the origin.
         camera_pos = -np.dot(np.transpose(self.R), self.t)
         view_dir = np.dot(np.transpose(self.R),
                           np.array([[0.0], [0.0], [-1.0]]))
@@ -172,6 +185,7 @@ class FullTextureMapper(object):
         # renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
         color, depth = renderer.render(self.scene)
         png.from_array(color, 'RGB').save('test_render.png')
+        save_depth_image(depth, image + '_depth.png')
 
     def test_rendering_on_real_camera(self):
         image, camera = (self.reconstruction.cameras.items())[1]
@@ -188,6 +202,7 @@ class FullTextureMapper(object):
         # self.scene.add(light, pose=camera.pose)
         color, depth = renderer.render(self.scene)
         png.from_array(color, 'RGB').save(image + '_render.png')
+        save_depth_image(depth, image + '_depth.png')
 
     # write texture coordinate to vertex
     def texture_ply(self):
