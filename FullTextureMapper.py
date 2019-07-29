@@ -10,20 +10,69 @@ import argparse
 import trimesh
 import pyrender
 import png
+import time
+import cv2
 from pyquaternion import Quaternion
 from satellite_stereo.lib import latlon_utm_converter
 from satellite_stereo.lib import latlonalt_enu_converter
 from satellite_stereo.lib.plyfile import PlyData, PlyElement
 
-# Transform a depth map to the range [0,255] and save to file 'image_name'.
-def save_depth_image(depth, image_name):
+# Compute the dimensions of a new image resized such that the max
+# dimension (width or height) is at most max_dim. Returns a tuple
+# (resized_width, resized_height).
+def resized_image_dims_for_max_dim(imwidth, imheight, max_dim):
+    if imwidth <= max_dim and imheight <= max_dim:
+        return (imwidth, imheight)
+
+    if float(imwidth) / max_dim > float(imheight) / max_dim:
+        resized_dims = (max_dim,
+                        int(round(float(imheight) * max_dim / imwidth)))
+    else:
+        resized_dims = (int(round(float(imwidth) * max_dim / imheight)),
+                        max_dim)
+
+    return resized_dims
+
+# Resize the provided color buffer to the provided maximum size (on
+# either dimension), and save to a png file called 'image_name'.
+def resize_and_save_color_buffer_to_png(image, max_dim, image_name):
+    height = np.shape(image)[0]
+    width = np.shape(image)[1]
+
+    if width <= max_dim and height <= max_dim:
+        png.from_array(image, 'RGB').save(image_name)
+    else:
+        resized_dims = resized_image_dims_for_max_dim(width, height, max_dim)
+        resized = cv2.resize(image, dsize=resized_dims,
+                             interpolation=cv2.INTER_AREA)
+        png.from_array(resized, 'RGB').save(image_name)
+
+# Transform a depth map to the range [0,255].
+def normalize_and_discretize_depth_buffer(depth):
     # Depth of zero is a sentinel value.
     depth_masked = np.ma.masked_equal(depth, 0.0)
     depth_min = depth_masked.min(axis=0).min(axis=0)
     depth_max = depth_masked.max(axis=0).max(axis=0)
     depth_normalized = (255 * (depth_masked - depth_min) /
                         (depth_max - depth_min)).filled(0).astype(np.uint8)
-    png.from_array(depth_normalized, 'L').save(image_name)
+    return depth_normalized
+
+# Normalize the values of and resize the provided depth buffer to the
+# provided maximum size (on either dimension), and save to a png file
+# called 'image_name'.
+def resize_and_save_depth_buffer_to_png(depth, max_dim, image_name):
+    depth_normalized = normalize_and_discretize_depth_buffer(depth)
+
+    height = np.shape(depth_normalized)[0]
+    width = np.shape(depth_normalized)[1]
+
+    if width <= max_dim and height <= max_dim:
+        png.from_array(depth_normalized, 'L').save(image_name)
+    else:
+        resized_dims = resized_image_dims_for_max_dim(width, height, max_dim)
+        resized = cv2.resize(depth_normalized, dsize=resized_dims,
+                             interpolation=cv2.INTER_AREA)
+        png.from_array(resized, 'L').save(image_name)
 
 
 class PerspectiveCamera(object):
@@ -180,8 +229,14 @@ class FullTextureMapper(object):
         #                            innerConeAngle=np.pi/16.0)
         # self.scene.add(light, pose=test_camera_pose)
         # renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
+        t = time.time()
         color, depth = renderer.render(self.scene)
-        png.from_array(color, 'RGB').save('test_render.png')
+        elapsed = time.time() - t
+        print 'Time to render:', elapsed
+        res = cv2.resize(color, dsize=(100, 100), interpolation=cv2.INTER_AREA)
+        # png.from_array(color, 'RGB').save('test_render.png')
+        png.from_array(res, 'RGB').save('test_render.png')
+
         save_depth_image(depth, image + '_depth.png')
 
     def test_rendering_on_real_camera(self):
@@ -192,9 +247,14 @@ class FullTextureMapper(object):
 
         self.scene.add(camera.pyrender_camera, pose=camera.pose)
 
+        t = time.time()
         color, depth = renderer.render(self.scene)
-        png.from_array(color, 'RGB').save(image + '_render.png')
-        save_depth_image(depth, image + '_depth.png')
+        elapsed = time.time() - t
+        print 'Time to render:', elapsed
+
+        # png.from_array(color, 'RGB').save(image + '_render.png')
+        resize_and_save_color_buffer_to_png(color, 1024, image + '_render.png')
+        resize_and_save_depth_buffer_to_png(depth, 1024, image + '_depth.png')
 
     # write texture coordinate to vertex
     def texture_ply(self):
