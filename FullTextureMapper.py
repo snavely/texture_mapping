@@ -225,11 +225,9 @@ class FullTextureMapper(object):
         color, depth = renderer.render(self.scene)
         elapsed = time.time() - t
         print 'Time to render:', elapsed
-        res = cv2.resize(color, dsize=(100, 100), interpolation=cv2.INTER_AREA)
-        # png.from_array(color, 'RGB').save('test_render.png')
-        png.from_array(res, 'RGB').save('test_render.png')
 
-        save_depth_image(depth, image + '_depth.png')
+        resize_and_save_color_buffer_to_png(color, 1024, 'test_render.png')
+        resize_and_save_depth_buffer_to_png(depth, 1024, 'test_depth.png')
 
     def test_rendering_on_real_camera(self):
         image, camera = (self.reconstruction.cameras.items())[1]
