@@ -90,6 +90,7 @@ class PerspectiveCamera(object):
                            camera_spec[11],
                            camera_spec[12]]).transpose()
 
+        # Convert pose from Y-Down to Y-Up ("OpenGL") coordinates.
         X180 = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
         self.R = np.dot(X180, self.R)
         self.t = np.dot(X180, self.t)
@@ -110,10 +111,6 @@ class PerspectiveCamera(object):
         znear = max(scene_distance - 1e5, 1.0)
         zfar = scene_distance + 1e5
 
-        # print image_name
-        # print 'znear:', znear, 'zfar:', zfar
-        # print 'fx:', camera_spec[2], 'fy:', camera_spec[3]
-        # print 'cx:', camera_spec[4], 'cy:', camera_spec[5]
         self.pyrender_camera = pyrender.IntrinsicsCamera(
             fx=camera_spec[2], fy=camera_spec[3],
             cx=camera_spec[4], cy=camera_spec[5],
