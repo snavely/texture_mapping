@@ -234,7 +234,16 @@ class FullTextureMapper(object):
     def test_rendering_on_real_camera(self):
         image, camera = (self.reconstruction.cameras.items())[1]
         print 'rendering image', image
-        
+
+        color, depth = self.render_from_camera(camera)
+
+        # png.from_array(color, 'RGB').save(image + '_render.png')
+        resize_and_save_color_buffer_to_png(color, 1024, image + '_render.png')
+        resize_and_save_depth_buffer_to_png(depth, 1024, image + '_depth.png')
+
+    # Render the loaded scene from the provided camera. Returns color
+    # and depth buffers.
+    def render_from_camera(self, camera):
         renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
 
         self.scene.add(camera.pyrender_camera, pose=camera.pose)
@@ -244,9 +253,7 @@ class FullTextureMapper(object):
         elapsed = time.time() - t
         print 'Time to render:', elapsed
 
-        # png.from_array(color, 'RGB').save(image + '_render.png')
-        resize_and_save_color_buffer_to_png(color, 1024, image + '_render.png')
-        resize_and_save_depth_buffer_to_png(depth, 1024, image + '_depth.png')
+        return color, depth
 
     # write texture coordinate to vertex
     def texture_ply(self):
