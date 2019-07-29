@@ -80,7 +80,7 @@ class PerspectiveCamera(object):
         self.image_name = image_name
         self.width = camera_spec[0]
         self.height = camera_spec[1]
-        self.K = np.array([[-camera_spec[2],            0.0, camera_spec[4]],
+        self.K = np.array([[camera_spec[2],            0.0, camera_spec[4]],
                            [           0.0, camera_spec[3], camera_spec[5]],
                            [           0.0,            0.0,            1.0]])
         quat = Quaternion(camera_spec[6], camera_spec[7],
@@ -224,11 +224,6 @@ class FullTextureMapper(object):
                                      [0, 0, 0, 1]])
 
         self.scene.add(test_camera, pose=test_camera_pose)
-        # light = pyrender.SpotLight(color=np.ones(3),
-        #                            intensity=3.0,
-        #                            innerConeAngle=np.pi/16.0)
-        # self.scene.add(light, pose=test_camera_pose)
-        # renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
         t = time.time()
         color, depth = renderer.render(self.scene)
         elapsed = time.time() - t
