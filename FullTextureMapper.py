@@ -223,6 +223,12 @@ class FullTextureMapper(object):
         b = (color_index >> 16) & 0xff
         return r, g, b
 
+    def color_buffer_to_color_indices(self, color):
+        # red is the lower 8-bits, then green, then blue.
+        color_indices = (
+            color[:,:,0] + 0xff * color[:,:,1] + 0xffff * color[:,:,2])
+        return color_indices
+
     def test_rendering(self):
         width = 2000
         height = 2000
@@ -275,6 +281,11 @@ class FullTextureMapper(object):
             print 'rendering image', image
 
             color, depth = self.render_from_camera(camera)
+
+            # Count number of times each color appears.
+            color_indices = self.color_buffer_to_color_indices(color)
+            elems, counts = np.unique(color_indices, return_counts=True)
+            print 'unique colors:', elems.size
 
             # resize_and_save_color_buffer_to_png(color, 1024,
             #                                     image + '_render.png')
@@ -400,8 +411,8 @@ def test2():
     texture_mapper = FullTextureMapper(ply_path, recon_path)
 
     # texture_mapper.test_rendering()
-    texture_mapper.test_rendering_on_real_camera()
-    # texture_mapper.create_textures()
+    # texture_mapper.test_rendering_on_real_camera()
+    texture_mapper.create_textures()
 
     # texture_mapper.save('/home/kai/satellite_project/d2_texture_result/012_5_nonBox_textured')
 
