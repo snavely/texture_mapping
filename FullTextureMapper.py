@@ -193,10 +193,21 @@ class FullTextureMapper(object):
         tmesh.vertices = vertices_enu
 
         # Recolor the facets.
+        num_facets = tmesh.facets.size
+        print 'number of facets:', num_facets
+        color_index = long(1)
+
+        # TODO(snavely): Why are some facets showing up as gray?
         for facet in tmesh.facets:
             # Random trimesh colors have random hue but nearly full
-            # saturation and value.
-            tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
+            # saturation and value. Useful for visualization and
+            # debugging.
+
+            # tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
+            r, g, b = self.color_index_to_color(color_index)
+            # Last 255 is for alpha channel (fully opaque).
+            tmesh.visual.face_colors[facet] = np.array((r, g, b, 255))
+            color_index = color_index + 1
         
         self.mesh = pyrender.Mesh.from_trimesh(tmesh, smooth=False)
         self.scene = pyrender.Scene(ambient_light=(1.0, 1.0, 1.0))
@@ -205,8 +216,12 @@ class FullTextureMapper(object):
         self.ply_textured = None
         # self.texture_ply()
 
-        # self.test_rendering()
-        self.test_rendering_on_real_camera()
+    def color_index_to_color(self, color_index):
+        # red is the lower 8-bits, then green, then blue.
+        r = color_index & 0xff
+        g = (color_index >> 8) & 0xff
+        b = (color_index >> 16) & 0xff
+        return r, g, b
 
     def test_rendering(self):
         width = 2000
@@ -244,14 +259,27 @@ class FullTextureMapper(object):
     def render_from_camera(self, camera):
         renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
 
-        self.scene.add(camera.pyrender_camera, pose=camera.pose)
+        node = self.scene.add(camera.pyrender_camera, pose=camera.pose)
 
         t = time.time()
         color, depth = renderer.render(self.scene)
         elapsed = time.time() - t
         print 'Time to render:', elapsed
 
+        self.scene.remove_node(node)
+
         return color, depth
+
+    def create_textures(self):
+        for image, camera in self.reconstruction.cameras.items():
+            print 'rendering image', image
+
+            color, depth = self.render_from_camera(camera)
+
+            # resize_and_save_color_buffer_to_png(color, 1024,
+            #                                     image + '_render.png')
+            # resize_and_save_depth_buffer_to_png(depth, 1024,
+            #                                     image + '_depth.png')
 
     # write texture coordinate to vertex
     def texture_ply(self):
@@ -370,6 +398,11 @@ def test2():
     # Location of the ply file to be texture mapped.
     ply_path = '/phoenix/S2/snavely/data/CORE3D/aws/data/wdixon/jul_test1/jacksonville_d4/buildings_prim/fitting/scores/aoi.ply'
     texture_mapper = FullTextureMapper(ply_path, recon_path)
+
+    # texture_mapper.test_rendering()
+    texture_mapper.test_rendering_on_real_camera()
+    # texture_mapper.create_textures()
+
     # texture_mapper.save('/home/kai/satellite_project/d2_texture_result/012_5_nonBox_textured')
 
 
