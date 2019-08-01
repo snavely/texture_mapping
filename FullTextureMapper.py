@@ -185,20 +185,22 @@ class FullTextureMapper(object):
         self.vertices = self.ply_data.elements[0]
         self.faces = self.ply_data.elements[1]
 
-        tmesh = trimesh.load(ply_path)
+        self.tmesh = trimesh.load(ply_path)
 
         # Transform vertices from UTM to ENU.
-        vertices_enu = self.reconstruction.utm_to_enu(tmesh.vertices)
+        vertices_enu = self.reconstruction.utm_to_enu(self.tmesh.vertices)
         print 'tmesh.vertices_enu:', vertices_enu[0:2, :]
-        tmesh.vertices = vertices_enu
+        self.tmesh.vertices = vertices_enu
 
         # Recolor the facets.
-        num_facets = tmesh.facets.size
+        num_facets = self.tmesh.facets.size
         print 'number of facets:', num_facets
         color_index = long(1)
 
-        # TODO(snavely): Why are some facets showing up as gray?
-        for facet in tmesh.facets:
+        # TODO(snavely): Why are some facets showing up as gray? Are
+        # they somehow facing the wrong direction? Do those faces not
+        # show up in the list of facets?
+        for facet in self.tmesh.facets:
             # Random trimesh colors have random hue but nearly full
             # saturation and value. Useful for visualization and
             # debugging.
@@ -206,10 +208,10 @@ class FullTextureMapper(object):
             # tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
             r, g, b = self.color_index_to_color(color_index)
             # Last 255 is for alpha channel (fully opaque).
-            tmesh.visual.face_colors[facet] = np.array((r, g, b, 255))
+            self.tmesh.visual.face_colors[facet] = np.array((r, g, b, 255))
             color_index = color_index + 1
         
-        self.mesh = pyrender.Mesh.from_trimesh(tmesh, smooth=False)
+        self.mesh = pyrender.Mesh.from_trimesh(self.tmesh, smooth=False)
         self.scene = pyrender.Scene(ambient_light=(1.0, 1.0, 1.0))
         self.scene.add(self.mesh)
 
@@ -277,6 +279,18 @@ class FullTextureMapper(object):
         return color, depth
 
     def create_textures(self):
+        num_cameras = len(self.reconstruction.cameras)
+        num_facets = self.tmesh.facets.size
+
+        print 'num_cameras:', num_cameras
+        print 'num_facets:', num_facets
+        
+        # Num cameras by num facets matrix counting the visibility of
+        # each facet in each image
+        facet_pixel_counts = np.zeros((num_cameras, num_facets),
+                                      dtype=np.int16)
+
+        camera_index = 0
         for image, camera in self.reconstruction.cameras.items():
             print 'rendering image', image
 
@@ -286,6 +300,11 @@ class FullTextureMapper(object):
             color_indices = self.color_buffer_to_color_indices(color)
             elems, counts = np.unique(color_indices, return_counts=True)
             print 'unique colors:', elems.size
+
+            for elem, count in zip(elems, counts):
+                if elem > 0 and elem <= num_facets:
+                    facet_index = elem - 1
+                    facet_pixel_counts[camera_index, facet_index] = count
 
             # resize_and_save_color_buffer_to_png(color, 1024,
             #                                     image + '_render.png')
@@ -405,9 +424,11 @@ def test2():
     # Base path for the reconstruction (cameras and images) to be used
     # in texture mapping.
     recon_path = '/phoenix/S7/kz298/core3d_result/aoi-d4-jacksonville'
+    # recon_path = '/phoenix/S7/kz298/core3d_result/aoi-d5-san_fernando'
 
     # Location of the ply file to be texture mapped.
     ply_path = '/phoenix/S2/snavely/data/CORE3D/aws/data/wdixon/jul_test1/jacksonville_d4/buildings_prim/fitting/scores/aoi.ply'
+    # ply_path = '/phoenix/S2/snavely/data/CORE3D/aws/data/wdixon/jul_test1/argentina_d5/buildings_prim/fitting/scores/aoi.ply'
     texture_mapper = FullTextureMapper(ply_path, recon_path)
 
     # texture_mapper.test_rendering()
