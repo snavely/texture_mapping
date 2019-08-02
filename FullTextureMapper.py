@@ -154,17 +154,23 @@ class Reconstruction(object):
         with open(fname, 'w') as fp:
             json.dump(self.meta, fp, indent=2)
 
-    def utm_to_enu(self, point):
-        # Convert a point in UTM coordinates to ENU.
-        lat, lon = latlon_utm_converter.eastnorth_to_latlon(point[:, 0:1],
-                                                            point[:, 1:2],
+    def utm_to_enu(self, points):
+        # Shift the points according to Kai's offset.
+        # points = points - np.array([20.0, -63.0, -59.3]).transpose()
+        
+        # Convert points in UTM coordinates to ENU.
+        lat, lon = latlon_utm_converter.eastnorth_to_latlon(points[:, 0:1],
+                                                            points[:, 1:2],
                                                             self.utm_zone,
                                                             self.hemisphere)
-        alt = point[:, 2:3]
+        alt = points[:, 2:3]
         x, y, z = latlonalt_enu_converter.latlonalt_to_enu(lat, lon, alt,
                                                            self.lat0,
                                                            self.lon0,
                                                            self.alt0)
+        # Shift the points according to my offset.
+        # points = points - np.array([20.0, -63.0, -59.3]).transpose()
+        # return np.concatenate((x - 30.0, y + 55.0, z + 60.0), axis=1)
         return np.concatenate((x, y, z), axis=1)
 
     def norm_coord(self, point):
@@ -191,6 +197,7 @@ class FullTextureMapper(object):
         vertices_enu = self.reconstruction.utm_to_enu(self.tmesh.vertices)
         print 'tmesh.vertices_enu:', vertices_enu[0:2, :]
         self.tmesh.vertices = vertices_enu
+        # self.tmesh.export('./mesh_enu.ply')
 
         # Recolor the facets.
         num_facets = self.tmesh.facets.size
@@ -293,6 +300,10 @@ class FullTextureMapper(object):
         camera_index = 0
         for image, camera in self.reconstruction.cameras.items():
             print 'rendering image', image
+            print 'camera.K:'
+            print camera.K
+            print 'camera.pose (inverse):'
+            print camera.pose
 
             color, depth = self.render_from_camera(camera)
 
@@ -306,10 +317,10 @@ class FullTextureMapper(object):
                     facet_index = elem - 1
                     facet_pixel_counts[camera_index, facet_index] = count
 
-            # resize_and_save_color_buffer_to_png(color, 1024,
-            #                                     image + '_render.png')
-            # resize_and_save_depth_buffer_to_png(depth, 1024,
-            #                                     image + '_depth.png')
+            resize_and_save_color_buffer_to_png(color, 1e6, # 1024,
+                                                image + '_render.png')
+            resize_and_save_depth_buffer_to_png(depth, 1e6, # 1024,
+                                                image + '_depth.png')
 
     # write texture coordinate to vertex
     def texture_ply(self):
