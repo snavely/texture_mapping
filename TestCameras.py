@@ -1,5 +1,4 @@
-# Script for generating a "full" texture map for a primitive model,
-# including sidewalls, given a collection of images with camera poses.
+# Script for testing rendering by rendering a COLMAP point cloud.
 
 import os
 os.environ["PYOPENGL_PLATFORM"] = "egl"
@@ -132,7 +131,8 @@ class Reconstruction(object):
         with open(
             os.path.join(
             recon_path,
-            'colmap/skew_correct/pinhole_dict.json')) as fp:
+            'colmap/sfm_pinhole/debug/kai_cameras.json')) as fp:
+            # 'colmap/skew_correct/pinhole_dict.json')) as fp:
             camera_data = json.load(fp)
             self.cameras = {}
             for image, camera in camera_data.items():
@@ -186,14 +186,14 @@ class TestCameras(object):
         resize_and_save_depth_buffer_to_png(depth, 1024, 'test_depth.png')
 
     def test_rendering_on_real_camera(self):
-        image, camera = (self.reconstruction.cameras.items())[1]
+        image, camera = (self.reconstruction.cameras.items())[0]
         print 'rendering image', image
 
         color, depth = self.render_from_camera(camera)
 
         # png.from_array(color, 'RGB').save(image + '_render.png')
-        resize_and_save_color_buffer_to_png(color, 1024, image + '_render.png')
-        resize_and_save_depth_buffer_to_png(depth, 1024, image + '_depth.png')
+        resize_and_save_color_buffer_to_png(color, 1e6, image + '_render.png')
+        resize_and_save_depth_buffer_to_png(depth, 1e6, image + '_depth.png')
 
     # Render the loaded scene from the provided camera. Returns color
     # and depth buffers.
@@ -201,6 +201,13 @@ class TestCameras(object):
         renderer = pyrender.OffscreenRenderer(
             camera.width, camera.height, point_size=10.0)
 
+        print 'camera.K:'
+        print camera.K
+        print 'camera.pose (inverted):'
+        print camera.pose
+        print 'projection_matrix:'
+        print camera.pyrender_camera.get_projection_matrix(camera.width,
+                                                           camera.height)
         node = self.scene.add(camera.pyrender_camera, pose=camera.pose)
 
         t = time.time()
@@ -224,8 +231,8 @@ class TestCameras(object):
 
             resize_and_save_color_buffer_to_png(color, 1e6, # 1024,
                                                 image + '_render.png')
-            resize_and_save_depth_buffer_to_png(depth, 1e6, # 1024,
-                                                image + '_depth.png')
+            # resize_and_save_depth_buffer_to_png(depth, 1e6, # 1024,
+            #                                     image + '_depth.png')
 
 
 def test():
@@ -246,9 +253,9 @@ def test2():
     # ply_path = '/phoenix/S2/snavely/data/CORE3D/aws/data/wdixon/jul_test1/argentina_d5/buildings_prim/fitting/scores/aoi.ply'
     test_cameras = TestCameras(ply_path, recon_path)
 
-    # texture_mapper.test_rendering()
-    # texture_mapper.test_rendering_on_real_camera()
-    test_cameras.render_all_cameras()
+    # test_cameras.test_rendering()
+    test_cameras.test_rendering_on_real_camera()
+    # test_cameras.render_all_cameras()
 
 if __name__ == '__main__':
     test2()

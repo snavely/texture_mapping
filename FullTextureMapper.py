@@ -143,21 +143,18 @@ class Reconstruction(object):
         with open(
             os.path.join(
             recon_path,
-            'colmap/skew_correct/pinhole_dict.json')) as fp:
+            'colmap/sfm_pinhole/debug/kai_cameras.json')) as fp:
+            # 'colmap/skew_correct/pinhole_dict.json')) as fp:
             camera_data = json.load(fp)
             self.cameras = {}
             for image, camera in camera_data.items():
                 self.cameras[image] = PerspectiveCamera(image, camera)
-                # print self.pyrender_cameras[image].get_projection_matrix(camera[0], camera[1])
 
     def write_meta(self, fname):
         with open(fname, 'w') as fp:
             json.dump(self.meta, fp, indent=2)
 
     def utm_to_enu(self, points):
-        # Shift the points according to Kai's offset.
-        # points = points - np.array([20.0, -63.0, -59.3]).transpose()
-        
         # Convert points in UTM coordinates to ENU.
         lat, lon = latlon_utm_converter.eastnorth_to_latlon(points[:, 0:1],
                                                             points[:, 1:2],
@@ -168,9 +165,6 @@ class Reconstruction(object):
                                                            self.lat0,
                                                            self.lon0,
                                                            self.alt0)
-        # Shift the points according to my offset.
-        # points = points - np.array([20.0, -63.0, -59.3]).transpose()
-        # return np.concatenate((x - 30.0, y + 55.0, z + 60.0), axis=1)
         return np.concatenate((x, y, z), axis=1)
 
     def norm_coord(self, point):
@@ -243,7 +237,7 @@ class FullTextureMapper(object):
         height = 2000
         renderer = pyrender.OffscreenRenderer(width, height)
         test_camera = pyrender.IntrinsicsCamera(
-            fx=866.0 * 1000.0, fy=866.0 * 1000.0, cx=1000.0, cy=1000.0,
+            fx=866.0 * 1000.0, fy=866.0 * 1000.0, cx=1000.0, cy=0.0, #cy=1000.0,
             znear=1000.0, zfar=1.0e8)
         test_camera_pose = np.array([[1, 0, 0, 0],
                                      [0, 1, 0, 0],
@@ -256,8 +250,8 @@ class FullTextureMapper(object):
         elapsed = time.time() - t
         print 'Time to render:', elapsed
 
-        resize_and_save_color_buffer_to_png(color, 1024, 'test_render.png')
-        resize_and_save_depth_buffer_to_png(depth, 1024, 'test_depth.png')
+        resize_and_save_color_buffer_to_png(color, 2048, 'test_render.png')
+        resize_and_save_depth_buffer_to_png(depth, 2048, 'test_depth.png')
 
     def test_rendering_on_real_camera(self):
         image, camera = (self.reconstruction.cameras.items())[1]
@@ -317,9 +311,9 @@ class FullTextureMapper(object):
                     facet_index = elem - 1
                     facet_pixel_counts[camera_index, facet_index] = count
 
-            resize_and_save_color_buffer_to_png(color, 1e6, # 1024,
+            resize_and_save_color_buffer_to_png(color, 1024,
                                                 image + '_render.png')
-            resize_and_save_depth_buffer_to_png(depth, 1e6, # 1024,
+            resize_and_save_depth_buffer_to_png(depth, 1024,
                                                 image + '_depth.png')
 
     # write texture coordinate to vertex
