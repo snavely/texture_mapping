@@ -124,7 +124,7 @@ class PerspectiveCamera(object):
 class Reconstruction(object):
     def __init__(self, recon_path):
         if not os.path.isabs(recon_path):
-            fpath = os.path.abspath(recon_Path)
+            fpath = os.path.abspath(recon_path)
         self.recon_path = recon_path
 
         # Read the camera data.
@@ -236,21 +236,12 @@ class TestCameras(object):
 
 
 def test():
-    print('entering test')
-    img = TifImg('/home/kai/satellite_project/sync_folder/true_ortho.tif')
-    img.write_meta('true_ortho_meta.json')
-    print('all tests passed!')
-
-
-def test2():
     # Base path for the reconstruction (cameras and images) to be used
     # in texture mapping.
-    recon_path = '/phoenix/S7/kz298/core3d_result/aoi-d4-jacksonville'
-    # recon_path = '/phoenix/S7/kz298/core3d_result/aoi-d5-san_fernando'
+    recon_path = 'testdata'
 
     # Location of the ply file to be texture mapped.
-    ply_path = '/phoenix/S2/snavely/data/CORE3D/aws/data/wdixon/jul_test1/jacksonville_d4/buildings_prim/fitting/scores/aoi.ply'
-    # ply_path = '/phoenix/S2/snavely/data/CORE3D/aws/data/wdixon/jul_test1/argentina_d5/buildings_prim/fitting/scores/aoi.ply'
+    ply_path = 'testdata/aoi.ply'
     test_cameras = TestCameras(ply_path, recon_path)
 
     # test_cameras.test_rendering()
@@ -258,4 +249,4 @@ def test2():
     # test_cameras.render_all_cameras()
 
 if __name__ == '__main__':
-    test2()
+    test()
