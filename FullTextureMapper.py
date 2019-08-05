@@ -98,11 +98,21 @@ class PerspectiveCamera(object):
         X180 = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
         self.R = np.dot(X180, self.R)
         self.t = np.dot(X180, self.t)
-        
+
         self.pose = np.concatenate(
             (np.concatenate((self.R, np.expand_dims(self.t, axis=1)), axis=1),
              np.array([[0, 0, 0, 1]])), axis=0)
+        # OpenGL expects us to provide a camera-to-world transform, so
+        # invert the pose.
         self.pose = np.linalg.inv(self.pose)
+
+        # Save the "standard" y-down pose as well.
+        self.ydown_pose = np.concatenate(
+            (np.concatenate((self.R, np.expand_dims(self.t, axis=1)), axis=1),
+             np.array([[0, 0, 0, 1]])), axis=0)
+        
+
+
 
         # Compute a reasonable zNear and zFar, based on the projection
         # of the camera location on the (negative) viewing direction,
@@ -373,7 +383,17 @@ class FullTextureMapper(object):
                                      np.amax(uv_coords_on_plane, axis=0)))
 
         # print uv_bbox_on_plane
-        # TODO: project uv_bbox_on_plane into image using camera.K and camera
+
+        # TODO: project uv_bbox_on_plane into image using camera.K and
+        # camera.ydown_pose (NOTE: camera.pose is the *inverse* of the
+        # usual pose, and also is in "y-up" (OpenGL-style)
+        # coordinates. camera.ydown_pose is the standard
+        # "computer-vision"-style mapping from world to camera
+        # coordinates.
+
+        # TODO: compute a homography that maps the projected bounding
+        # box to a small image anchored at the origin, and apply the
+        # homography to fill in that patch with rectified content.
 
     # Given an assignment from facets to images, create a texture map.
     # Returns a texture image and a list of uv-coordinates per vertex
