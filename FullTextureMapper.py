@@ -74,6 +74,10 @@ def resize_and_save_depth_buffer_to_png(depth, max_dim, image_name):
                              interpolation=cv2.INTER_AREA)
         png.from_array(resized, 'L').save(image_name)
 
+def unit_projection_onto_plane(vector, normal):
+    projection = vector - np.dot(vector, normal) * normal
+    return projection / np.linalg.norm(projection)
+
 
 class PerspectiveCamera(object):
     def __init__(self, image_name, camera_spec):
@@ -196,7 +200,7 @@ class FullTextureMapper(object):
         # Recolor the facets.
         num_facets = self.tmesh.facets.size
         print 'number of facets:', num_facets
-        color_index = long(1)
+        facet_index = long(0)
 
         # TODO(snavely): Why are some facets showing up as gray? Are
         # they somehow facing the wrong direction? Do those faces not
@@ -207,10 +211,11 @@ class FullTextureMapper(object):
             # debugging.
 
             # tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
-            r, g, b = self.color_index_to_color(color_index)
+            # self.rectifying_homography(None, facet_index, 100)
+            r, g, b = self.color_index_to_color(facet_index + 1)
             # Last 255 is for alpha channel (fully opaque).
             self.tmesh.visual.face_colors[facet] = np.array((r, g, b, 255))
-            color_index = color_index + 1
+            facet_index = facet_index + 1
         
         self.mesh = pyrender.Mesh.from_trimesh(self.tmesh, smooth=False)
         self.scene = pyrender.Scene(ambient_light=(1.0, 1.0, 1.0))
@@ -315,6 +320,74 @@ class FullTextureMapper(object):
                                                 image + '_render.png')
             resize_and_save_depth_buffer_to_png(depth, 1024,
                                                 image + '_depth.png')
+
+    # Compute a rectifying homography from the given camera and
+    # facet_index, using the camera parameters and facet position and
+    # normal. The homography will map the facet to a quad with upper
+    # right corner at (0,0), and maximum length max_side_length.
+    def rectifying_homography(self, camera, facet_index,
+                              pixels_per_meter=3.33, max_side_length=256):
+        # Get the surface normal for the facet.
+        normal = self.tmesh.facets_normal[facet_index]
+
+        # Compute tangent and bitangent, i.e., u_axis and v_axis. If
+        # normal is pointing up or nearly up, then have tangent and
+        # bitangent pointing approximately north and east. Otherwise,
+        # tangent and bitangent are pointing up and sideways.
+        if 1.0 - np.abs(normal[2]) < 1e-3:
+            # Normal is approximately up.
+            u_axis = unit_projection_onto_plane(np.array([1.0, 0.0, 0.0]),
+                                                normal)
+            v_axis = np.cross(normal, u_axis)
+        else:
+            # Normal is sufficiently far from pointing up.
+            v_axis = unit_projection_onto_plane(np.array([0.0, 0.0, 1.0]),
+                                                normal)
+            u_axis = np.cross(v_axis, normal)
+
+        np.testing.assert_allclose(np.dot(u_axis, v_axis), 0.0, atol=1.0e-5)
+        np.testing.assert_allclose(np.dot(u_axis, normal), 0.0, atol=1.0e-5)
+        np.testing.assert_allclose(np.dot(v_axis, normal), 0.0, atol=1.0e-5)
+        basis = np.stack((u_axis, v_axis, normal))
+
+        # Project all of the facet vertices onto the basis.
+        vertices = self.tmesh.vertices[
+            self.tmesh.faces[self.tmesh.facets[facet_index]]]
+        vertices_shape = np.shape(vertices)
+        assert vertices_shape[2] == 3
+        vertices = np.reshape(vertices,
+                              (vertices_shape[0] * vertices_shape[1], 3))
+        vertices = vertices - self.tmesh.facets_origin[facet_index]
+        projected_vertices = np.transpose(
+            np.dot(basis, np.transpose(vertices)))
+
+        # TODO(snavely): Check why such a large tolerance is needed
+        # here. Do we need to increase facet_tolerance in the trimesh
+        # code?
+        np.testing.assert_allclose(projected_vertices[:,2],
+                                   0.0, atol=1.0e-2)
+
+        # Compute a uv-bounding box.
+        uv_coords_on_plane = projected_vertices[:, 0:2]
+        uv_bbox_on_plane = np.stack((np.amin(uv_coords_on_plane, axis=0),
+                                     np.amax(uv_coords_on_plane, axis=0)))
+
+        # print uv_bbox_on_plane
+        # TODO: project uv_bbox_on_plane into image using camera.K and camera
+
+    # Given an assignment from facets to images, create a texture map.
+    # Returns a texture image and a list of uv-coordinates per vertex
+    # per face.
+    # 
+    # Inputs:
+    #   facet_assignments: array of length num_facets, containing
+    #     string identifying image to be used for texturing.
+    #
+    # Outputs:
+    #   image: texture atlas
+    #   uv_coords: per-vertex per-face list of texture coordinates
+    def create_textures_from_facet_assignments(facet_assignments):
+        pass
 
     # write texture coordinate to vertex
     def texture_ply(self):
