@@ -12,6 +12,8 @@ import pyrender
 import png
 import time
 import cv2
+import imageio
+import subprocess
 from pyquaternion import Quaternion
 from satellite_stereo.lib import latlon_utm_converter
 from satellite_stereo.lib import latlonalt_enu_converter
@@ -19,19 +21,21 @@ from satellite_stereo.lib.plyfile import PlyData, PlyElement
 
 # Compute the dimensions of a new image resized such that the max
 # dimension (width or height) is at most max_dim. Returns a tuple
-# (resized_width, resized_height).
+# (resized_width, resized_height) and an optional scale factor.
 def resized_image_dims_for_max_dim(imwidth, imheight, max_dim):
     if imwidth <= max_dim and imheight <= max_dim:
-        return (imwidth, imheight)
+        return (imwidth, imheight), 1.0
 
     if float(imwidth) / max_dim > float(imheight) / max_dim:
+        scale = max_dim / imwidth
         resized_dims = (max_dim,
-                        int(round(float(imheight) * max_dim / imwidth)))
+                        max(int(round(float(imheight) * max_dim / imwidth)), 1))
     else:
-        resized_dims = (int(round(float(imwidth) * max_dim / imheight)),
+        scale = max_dim / imheight
+        resized_dims = (max(int(round(float(imwidth) * max_dim / imheight)), 1),
                         max_dim)
 
-    return resized_dims
+    return resized_dims, scale
 
 # Resize the provided color buffer to the provided maximum size (on
 # either dimension), and save to a png file called 'image_name'.
@@ -42,7 +46,7 @@ def resize_and_save_color_buffer_to_png(image, max_dim, image_name):
     if width <= max_dim and height <= max_dim:
         png.from_array(image, 'RGB').save(image_name)
     else:
-        resized_dims = resized_image_dims_for_max_dim(width, height, max_dim)
+        resized_dims, _ = resized_image_dims_for_max_dim(width, height, max_dim)
         resized = cv2.resize(image, dsize=resized_dims,
                              interpolation=cv2.INTER_AREA)
         png.from_array(resized, 'RGB').save(image_name)
@@ -69,7 +73,7 @@ def resize_and_save_depth_buffer_to_png(depth, max_dim, image_name):
     if width <= max_dim and height <= max_dim:
         png.from_array(depth_normalized, 'L').save(image_name)
     else:
-        resized_dims = resized_image_dims_for_max_dim(width, height, max_dim)
+        resized_dims, _ = resized_image_dims_for_max_dim(width, height, max_dim)
         resized = cv2.resize(depth_normalized, dsize=resized_dims,
                              interpolation=cv2.INTER_AREA)
         png.from_array(resized, 'L').save(image_name)
@@ -94,6 +98,11 @@ class PerspectiveCamera(object):
                            camera_spec[11],
                            camera_spec[12]]).transpose()
 
+        # Save the "standard" y-down pose.
+        self.pose_ydown = np.concatenate(
+            (np.concatenate((self.R, np.expand_dims(self.t, axis=1)), axis=1),
+             np.array([[0, 0, 0, 1]])), axis=0)
+
         # Convert pose from Y-Down to Y-Up ("OpenGL") coordinates.
         X180 = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
         self.R = np.dot(X180, self.R)
@@ -102,17 +111,9 @@ class PerspectiveCamera(object):
         self.pose = np.concatenate(
             (np.concatenate((self.R, np.expand_dims(self.t, axis=1)), axis=1),
              np.array([[0, 0, 0, 1]])), axis=0)
-        # OpenGL expects us to provide a camera-to-world transform, so
+        # pyrender expects us to provide a camera-to-world transform, so
         # invert the pose.
         self.pose = np.linalg.inv(self.pose)
-
-        # Save the "standard" y-down pose as well.
-        self.ydown_pose = np.concatenate(
-            (np.concatenate((self.R, np.expand_dims(self.t, axis=1)), axis=1),
-             np.array([[0, 0, 0, 1]])), axis=0)
-        
-
-
 
         # Compute a reasonable zNear and zFar, based on the projection
         # of the camera location on the (negative) viewing direction,
@@ -130,10 +131,17 @@ class PerspectiveCamera(object):
             cx=camera_spec[4], cy=camera_spec[5],
             znear=znear, zfar=zfar, name=image_name)
 
-    def project(self, point):
-        proj3 = np.dot(self.K, np.dot(self.R, np.transpose(point)) + self.t)
-        proj = np.array([-proj3[0] / proj3[2],
-                         -proj3[1] / proj3[2]]).transpose()
+    def project_ydown(self, points):
+        num_points = np.shape(points)[0]
+
+        # Convert points to homogeneous coordinates.
+        points_homogeneous = np.concatenate(
+            (points, np.ones((num_points, 1))), axis=1)
+        proj3 = np.dot(self.K,
+                       np.dot(self.pose_ydown,
+                              np.transpose(points_homogeneous))[0:3])
+        proj = np.array([proj3[0] / proj3[2],
+                         proj3[1] / proj3[2]]).transpose()
         return proj
 
 class Reconstruction(object):
@@ -193,9 +201,14 @@ class Reconstruction(object):
 
 
 class FullTextureMapper(object):
-    def __init__(self, ply_path, recon_path):
+    def __init__(self, ply_path, recon_path, local_texture_path):
         self.reconstruction = Reconstruction(recon_path)
         self.ply_data = PlyData.read(ply_path)
+        self.local_texture_path = local_texture_path
+
+        if not os.path.exists(self.local_texture_path):
+            os.makedirs(self.local_texture_path)
+        
         self.vertices = self.ply_data.elements[0]
         self.faces = self.ply_data.elements[1]
 
@@ -212,19 +225,19 @@ class FullTextureMapper(object):
         print 'number of facets:', num_facets
         facet_index = long(0)
 
-        # TODO(snavely): Why are some facets showing up as gray? Are
-        # they somehow facing the wrong direction? Do those faces not
-        # show up in the list of facets?
+        # TODO(snavely): Why are some facets showing up as gray? Are they
+        # somehow facing the wrong direction? Do those faces not show up in the
+        # list of facets?
         for facet in self.tmesh.facets:
-            # Random trimesh colors have random hue but nearly full
-            # saturation and value. Useful for visualization and
-            # debugging.
+            # Random trimesh colors have random hue but nearly full saturation
+            # and value. Useful for visualization and debugging.
 
             # tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
-            # self.rectifying_homography(None, facet_index, 100)
-            r, g, b = self.color_index_to_color(facet_index + 1)
+            r, g, b = self.color_index_to_color(facet_index)
             # Last 255 is for alpha channel (fully opaque).
-            self.tmesh.visual.face_colors[facet] = np.array((r, g, b, 255))
+            self.tmesh.visual.face_colors[facet] = np.array([r, g, b, 255],
+                                                            dtype=np.uint8)
+            # self.tmesh.visual.face_colors[facet] = np.array([20, 20, 0, 255], dtype=np.uint8)
             facet_index = facet_index + 1
         
         self.mesh = pyrender.Mesh.from_trimesh(self.tmesh, smooth=False)
@@ -239,12 +252,15 @@ class FullTextureMapper(object):
         r = color_index & 0xff
         g = (color_index >> 8) & 0xff
         b = (color_index >> 16) & 0xff
+
+        if g > 60:
+            print color_index, '->', r, g, b
         return r, g, b
 
     def color_buffer_to_color_indices(self, color):
-        # red is the lower 8-bits, then green, then blue.
+        # red is the lowest 8-bits, then green, then blue.
         color_indices = (
-            color[:,:,0] + 0xff * color[:,:,1] + 0xffff * color[:,:,2])
+            color[:,:,0] + 256 * color[:,:,1] + 65536 * color[:,:,2])
         return color_indices
 
     def test_rendering(self):
@@ -269,17 +285,21 @@ class FullTextureMapper(object):
         resize_and_save_depth_buffer_to_png(depth, 2048, 'test_depth.png')
 
     def test_rendering_on_real_camera(self):
-        image, camera = (self.reconstruction.cameras.items())[1]
-        print 'rendering image', image
+        image_name, camera = (self.reconstruction.cameras.items())[0]
+        print 'rendering image', image_name
 
         color, depth = self.render_from_camera(camera)
+        image = imageio.imread(image_name)
 
-        # png.from_array(color, 'RGB').save(image + '_render.png')
-        resize_and_save_color_buffer_to_png(color, 1024, image + '_render.png')
-        resize_and_save_depth_buffer_to_png(depth, 1024, image + '_depth.png')
+        self.create_local_texture(camera, 0, image)
 
-    # Render the loaded scene from the provided camera. Returns color
-    # and depth buffers.
+        # resize_and_save_color_buffer_to_png(color, 1024,
+        #                                     image_name + '_render.png')
+        # resize_and_save_depth_buffer_to_png(depth, 1024,
+        #                                     image_name + '_depth.png')
+
+    # Render the loaded scene from the provided camera. Returns color and depth
+    # buffers.
     def render_from_camera(self, camera):
         renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
 
@@ -307,13 +327,17 @@ class FullTextureMapper(object):
                                       dtype=np.int16)
 
         camera_index = 0
-        for image, camera in self.reconstruction.cameras.items():
-            print 'rendering image', image
+        # for image, camera in self.reconstruction.cameras.items():
+        facet_uv_coords = {}
+
+        for image_name, camera in self.reconstruction.cameras.items()[0:1]:
+            print 'rendering image', image_name
             print 'camera.K:'
             print camera.K
             print 'camera.pose (inverse):'
             print camera.pose
 
+            image = imageio.imread(image_name)
             color, depth = self.render_from_camera(camera)
 
             # Count number of times each color appears.
@@ -322,78 +346,121 @@ class FullTextureMapper(object):
             print 'unique colors:', elems.size
 
             for elem, count in zip(elems, counts):
-                if elem > 0 and elem <= num_facets:
-                    facet_index = elem - 1
+                if elem >= 0 and elem < num_facets:
+                    facet_index = elem #  - 1
+                    print 'Creating local texture for facet', facet_index
                     facet_pixel_counts[camera_index, facet_index] = count
+                    uv_coords = self.create_local_texture(
+                        camera, facet_index, image)
+                    facet_uv_coords[facet_index] = uv_coords
+                else:
+                    print 'Skipping out-of-range facet_index', elem # -1
 
+            facet_bboxes = self.generate_texture_atlas('texture.png')
+
+            for facet_index, bbox in facet_bboxes.items():
+                # For each facet, apply the offset into the global texture map.
+                facet_uv_coords[facet_index] = (
+                    facet_uv_coords[facet_index] + np.array([bbox[1], bbox[0]]))
+
+            # Debugging output.
             resize_and_save_color_buffer_to_png(color, 1024,
-                                                image + '_render.png')
+                                                image_name + '_render.png')
             resize_and_save_depth_buffer_to_png(depth, 1024,
-                                                image + '_depth.png')
+                                                image_name + '_depth.png')
 
-    # Compute a rectifying homography from the given camera and
-    # facet_index, using the camera parameters and facet position and
-    # normal. The homography will map the facet to a quad with upper
-    # right corner at (0,0), and maximum length max_side_length.
-    def rectifying_homography(self, camera, facet_index,
-                              pixels_per_meter=3.33, max_side_length=256):
-        # Get the surface normal for the facet.
-        normal = self.tmesh.facets_normal[facet_index]
-
-        # Compute tangent and bitangent, i.e., u_axis and v_axis. If
-        # normal is pointing up or nearly up, then have tangent and
-        # bitangent pointing approximately north and east. Otherwise,
-        # tangent and bitangent are pointing up and sideways.
-        if 1.0 - np.abs(normal[2]) < 1e-3:
-            # Normal is approximately up.
-            u_axis = unit_projection_onto_plane(np.array([1.0, 0.0, 0.0]),
-                                                normal)
-            v_axis = np.cross(normal, u_axis)
-        else:
-            # Normal is sufficiently far from pointing up.
-            v_axis = unit_projection_onto_plane(np.array([0.0, 0.0, 1.0]),
-                                                normal)
-            u_axis = np.cross(v_axis, normal)
-
-        np.testing.assert_allclose(np.dot(u_axis, v_axis), 0.0, atol=1.0e-5)
-        np.testing.assert_allclose(np.dot(u_axis, normal), 0.0, atol=1.0e-5)
-        np.testing.assert_allclose(np.dot(v_axis, normal), 0.0, atol=1.0e-5)
-        basis = np.stack((u_axis, v_axis, normal))
-
-        # Project all of the facet vertices onto the basis.
+    def create_local_texture(self, camera, facet_index, image,
+                             max_side_length=256):
+        # Gather the vertices for this facet.
         vertices = self.tmesh.vertices[
             self.tmesh.faces[self.tmesh.facets[facet_index]]]
         vertices_shape = np.shape(vertices)
         assert vertices_shape[2] == 3
         vertices = np.reshape(vertices,
                               (vertices_shape[0] * vertices_shape[1], 3))
-        vertices = vertices - self.tmesh.facets_origin[facet_index]
-        projected_vertices = np.transpose(
-            np.dot(basis, np.transpose(vertices)))
 
-        # TODO(snavely): Check why such a large tolerance is needed
-        # here. Do we need to increase facet_tolerance in the trimesh
-        # code?
-        np.testing.assert_allclose(projected_vertices[:,2],
-                                   0.0, atol=1.0e-2)
+        # Project the vertices into the image.
+        projections = camera.project_ydown(vertices)
 
-        # Compute a uv-bounding box.
-        uv_coords_on_plane = projected_vertices[:, 0:2]
-        uv_bbox_on_plane = np.stack((np.amin(uv_coords_on_plane, axis=0),
-                                     np.amax(uv_coords_on_plane, axis=0)))
+        # Clamp projections to image boundaries.
+        # TODO(snavely): Consider more intelligent handling of
+        # out-of-bounds issues.
+        projections = np.clip(projections,
+                              np.array([0.0, 0.0]),
+                              np.array([camera.width-1, camera.height-1]))
 
-        # print uv_bbox_on_plane
+        # Compute the bounding box in image space.
+        # Compute 2D bounding box of projected uv coordinates.
+        proj_bbox = np.stack((np.amin(projections, axis=0),
+                              np.amax(projections, axis=0)))
 
-        # TODO: project uv_bbox_on_plane into image using camera.K and
-        # camera.ydown_pose (NOTE: camera.pose is the *inverse* of the
-        # usual pose, and also is in "y-up" (OpenGL-style)
-        # coordinates. camera.ydown_pose is the standard
-        # "computer-vision"-style mapping from world to camera
-        # coordinates.
 
-        # TODO: compute a homography that maps the projected bounding
-        # box to a small image anchored at the origin, and apply the
-        # homography to fill in that patch with rectified content.
+        # Snap the bounding box to integer coordinates via floor and
+        # ceiling operations.
+        proj_bbox = np.array(
+            [[np.floor(proj_bbox[0,0]), np.floor(proj_bbox[0,1])],
+             [np.ceil(proj_bbox[1,0]), np.ceil(proj_bbox[1,1])]],
+            dtype=np.int32)
+
+        # TODO(snavely): optionally pad the bounding box to avoid
+        # boundary effects.
+        
+        local_uv_coords = projections - proj_bbox[0,:]
+
+        # Crop the image and save to a file.
+        image_cropped = (
+            image[proj_bbox[0,1]:proj_bbox[1,1]+1,
+                  proj_bbox[0,0]:proj_bbox[1,0]+1])
+
+        crop_width, crop_height = np.shape(image_cropped)
+
+        # Check the size against the requested max size.
+        resized_dims, scale = resized_image_dims_for_max_dim(
+            crop_width, crop_height, max_side_length)
+
+        if scale < 1.0:
+            # Scale the cropped patch and the uv_coords accordingly.
+            local_uv_coords = scale * local_uv_coords
+            image_cropped = cv2.resize(image_cropped, dsize=resized_dims,
+                                       interpolation=cv2.INTER_AREA)
+
+        image_name = os.path.join(self.local_texture_path,
+                                  'texture_%05d.png' % facet_index)
+        png.from_array(image_cropped, 'L').save(image_name)
+
+        return local_uv_coords
+
+
+    # Generate a texture atlas by running the 'atlas' program, and returning a
+    # bounding box for each facet's local texture within the atlas.
+    def generate_texture_atlas(self, output_image_name):
+        print 'Generating texture atlas'
+        atlas_bin='/phoenix/S2/snavely/code/atlas/atlas'
+        subprocess.call(
+            '{} {} -o {} -t {}'.format(atlas_bin,
+                                       self.local_texture_path,
+                                       output_image_name,
+                                       '/tmp/atlas.txt'), shell=True)
+
+        with open('/tmp/atlas.txt') as fp:
+            atlas_lines = fp.readlines()
+
+        facet_bboxes = {}
+        for line in atlas_lines:
+            fields = line.split()
+            tex_name = fields[0]
+            tex_name_fields = tex_name.split('_')
+            facet_index = int(tex_name_fields[1])
+
+            x = int(fields[1])
+            y = int(fields[2])
+            w = int(fields[3])
+            h = int(fields[4])
+            
+            facet_bboxes[facet_index] = (x, y, w, h)
+
+        return facet_bboxes
+
 
     # Given an assignment from facets to images, create a texture map.
     # Returns a texture image and a list of uv-coordinates per vertex
@@ -434,7 +501,7 @@ class FullTextureMapper(object):
 
         renderer = pyrender.OffscreenRenderer(1000, 1000)
         for image, camera in self.reconstruction.cameras.items():
-            print camera.project(vertices_enu[0,:])
+            # print camera.project(vertices_enu[0,:])
             test_camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0)
             test_camera_pose = np.array([[1, 0, 0, 0],
                                          [0, 1, 0, 0],
@@ -518,7 +585,7 @@ def test():
 
     # Location of the ply file to be texture mapped.
     ply_path = 'testdata/aoi.ply'
-    texture_mapper = FullTextureMapper(ply_path, recon_path)
+    texture_mapper = FullTextureMapper(ply_path, recon_path, '/tmp/textures')
 
     # texture_mapper.test_rendering()
     # texture_mapper.test_rendering_on_real_camera()
