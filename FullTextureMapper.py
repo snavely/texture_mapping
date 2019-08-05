@@ -363,6 +363,8 @@ class FullTextureMapper(object):
                 facet_uv_coords[facet_index] = (
                     facet_uv_coords[facet_index] + np.array([bbox[1], bbox[0]]))
 
+            # TODO: Actually assign these UV coordinates to faces.
+
             # Debugging output.
             resize_and_save_color_buffer_to_png(color, 1024,
                                                 image_name + '_render.png')
