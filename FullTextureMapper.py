@@ -219,17 +219,17 @@ class FullTextureMapper(object):
 
         trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
-        print 'num_vertices: ', np.shape(self.tmesh.vertices)
+        print('num_vertices: {}'.format(np.shape(self.tmesh.vertices)))
         
         # Transform vertices from UTM to ENU.
         vertices_enu = self.reconstruction.utm_to_enu(self.tmesh.vertices)
-        print 'tmesh.vertices_enu:', vertices_enu[0:2, :]
+        # print('tmesh.vertices_enu: {}'.format(vertices_enu[0:2, :]))
         self.tmesh.vertices = vertices_enu
         # self.tmesh.export('./mesh_enu.ply')
 
         # Recolor the facets.
         num_facets = self.tmesh.facets.size
-        print 'number of facets:', num_facets
+        print('number of facets: {}'.format(num_facets))
         # facet_index = long(0)
 
         # TODO(snavely): Why are some facets showing up as gray? Are they
@@ -260,8 +260,6 @@ class FullTextureMapper(object):
         g = (color_index >> 8) & 0xff
         b = (color_index >> 16) & 0xff
 
-        if g > 60:
-            print color_index, '->', r, g, b
         return r, g, b
 
     def color_buffer_to_color_indices(self, color):
@@ -286,14 +284,14 @@ class FullTextureMapper(object):
         t = time.time()
         color, depth = renderer.render(self.scene)
         elapsed = time.time() - t
-        print 'Time to render:', elapsed
+        print('Time to render: {}'.format(elapsed))
 
         resize_and_save_color_buffer_to_png(color, 2048, 'test_render.png')
         resize_and_save_depth_buffer_to_png(depth, 2048, 'test_depth.png')
 
     def test_rendering_on_real_camera(self):
         image_name, camera = (self.reconstruction.cameras.items())[0]
-        print 'rendering image', image_name
+        print('Rendering image {}'.format(image_name))
 
         color, depth = self.render_from_camera(camera)
         image = imageio.imread(image_name)
@@ -315,7 +313,7 @@ class FullTextureMapper(object):
         t = time.time()
         color, depth = renderer.render(self.scene)
         elapsed = time.time() - t
-        print 'Time to render:', elapsed
+        print('Time to render: {}'.format(elapsed))
 
         self.scene.remove_node(node)
 
@@ -325,9 +323,6 @@ class FullTextureMapper(object):
         num_cameras = len(self.reconstruction.cameras)
         num_facets = self.tmesh.facets.size
 
-        print 'num_cameras:', num_cameras
-        print 'num_facets:', num_facets
-        
         # Num cameras by num facets matrix counting the visibility of
         # each facet in each image
         facet_pixel_counts = np.zeros((num_cameras, num_facets),
@@ -338,11 +333,7 @@ class FullTextureMapper(object):
         facet_uv_coords = {}
 
         for image_name, camera in self.reconstruction.cameras.items()[0:1]:
-            print 'rendering image', image_name
-            print 'camera.K:'
-            print camera.K
-            print 'camera.pose (inverse):'
-            print camera.pose
+            print('rendering image {}'.format(image_name))
 
             image = imageio.imread(image_name)
             color, depth = self.render_from_camera(camera)
@@ -350,18 +341,19 @@ class FullTextureMapper(object):
             # Count number of times each color appears.
             color_indices = self.color_buffer_to_color_indices(color)
             elems, counts = np.unique(color_indices, return_counts=True)
-            print 'unique colors:', elems.size
+            print('Visible facets: {}'.format(elems.size))
 
             for elem, count in zip(elems, counts):
                 if elem >= 0 and elem < num_facets:
-                    facet_index = elem #  - 1
-                    print 'Creating local texture for facet', facet_index
+                    facet_index = elem
+                    # print('Creating local texture for facet {}'.
+                    #       format(facet_index))
                     facet_pixel_counts[camera_index, facet_index] = count
                     uv_coords = self.create_local_texture(
                         camera, facet_index, image)
                     facet_uv_coords[facet_index] = uv_coords
                 else:
-                    print 'Skipping out-of-range facet_index', elem # -1
+                    print('Skipping out-of-range facet_index {}'.format(elem))
 
             facet_bboxes = self.generate_texture_atlas('texture.png')
 
@@ -425,15 +417,15 @@ class FullTextureMapper(object):
             cnt = 0
             for face_idx, face in enumerate(trimesh_obj.faces):
                 if face_idx not in face2facet_mapping:
-                    print('Face: {} has no cooresponding facet'.format(face_idx))
+                    print('Face: {} has no corresponding facet'.format(face_idx))
                     uv_coords = np.zeros((3, 2))
                     cnt += 1
                 else:
                     facet_idx, idx = face2facet_mapping[face_idx]
 
                     if facet_idx not in facet_uv_coords: 
-                        print('Face: {}, cooresponding facet: {} has no texture'.format(
-                            face_idx, facet_idx))
+                        # print('Face: {}, corresponding facet: {} has no texture'.format(
+                        #     face_idx, facet_idx))
                         uv_coords = np.zeros((3, 2))
                         cnt += 1
                     else:
@@ -535,7 +527,7 @@ class FullTextureMapper(object):
     # Generate a texture atlas by running the 'atlas' program, and returning a
     # bounding box for each facet's local texture within the atlas.
     def generate_texture_atlas(self, output_image_name):
-        print 'Generating texture atlas'
+        print('Generating texture atlas')
         atlas_bin='/phoenix/S2/snavely/code/atlas/atlas'
         subprocess.call(
             '{} {} -o {} -t {}'.format(atlas_bin,
@@ -601,11 +593,11 @@ class FullTextureMapper(object):
         # vert_el = PlyElement.describe(vertices, 'vertex',
         #                                comments=['point coordinate, texture coordinate'])
         # self.ply_textured = PlyData([vert_el, self.faces], text=True)
-        print 'ply_vertices:', vertices_enu[0:2,:]
+        # print('ply_vertices: {}'.format(vertices_enu[0:2,:]))
 
         renderer = pyrender.OffscreenRenderer(1000, 1000)
         for image, camera in self.reconstruction.cameras.items():
-            # print camera.project(vertices_enu[0,:])
+            # print('{}'.format(camera.project(vertices_enu[0,:])))
             test_camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0)
             test_camera_pose = np.array([[1, 0, 0, 0],
                                          [0, 1, 0, 0],
