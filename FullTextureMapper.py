@@ -18,6 +18,7 @@ from pyquaternion import Quaternion
 from satellite_stereo.lib import latlon_utm_converter
 from satellite_stereo.lib import latlonalt_enu_converter
 from satellite_stereo.lib.plyfile import PlyData, PlyElement
+import shutil
 
 # Compute the dimensions of a new image resized such that the max
 # dimension (width or height) is at most max_dim. Returns a tuple
@@ -203,14 +204,18 @@ class Reconstruction(object):
 class FullTextureMapper(object):
     def __init__(self, ply_path, recon_path, local_texture_path):
         self.reconstruction = Reconstruction(recon_path)
-        self.ply_data = PlyData.read(ply_path)
         self.local_texture_path = local_texture_path
 
-        if not os.path.exists(self.local_texture_path):
-            os.makedirs(self.local_texture_path)
+        # Remove previous texture images.
+        # TODO: make this a safer operation by creating a temporary directory.
+        if os.path.exists(self.local_texture_path):
+            shutil.rmtree(self.local_texture_path)
+        os.makedirs(self.local_texture_path)
         
-        self.vertices = self.ply_data.elements[0]
-        self.faces = self.ply_data.elements[1]
+        # Kai says: no longer needed
+        # self.ply_data = PlyData.read(ply_path)
+        # self.vertices = self.ply_data.elements[0]
+        # self.faces = self.ply_data.elements[1]
 
         trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
@@ -225,12 +230,12 @@ class FullTextureMapper(object):
         # Recolor the facets.
         num_facets = self.tmesh.facets.size
         print 'number of facets:', num_facets
-        facet_index = long(0)
+        # facet_index = long(0)
 
         # TODO(snavely): Why are some facets showing up as gray? Are they
         # somehow facing the wrong direction? Do those faces not show up in the
         # list of facets?
-        for facet in self.tmesh.facets:
+        for facet_index, facet in enumerate(self.tmesh.facets):
             # Random trimesh colors have random hue but nearly full saturation
             # and value. Useful for visualization and debugging.
 
@@ -240,7 +245,7 @@ class FullTextureMapper(object):
             self.tmesh.visual.face_colors[facet] = np.array([r, g, b, 255],
                                                             dtype=np.uint8)
             # self.tmesh.visual.face_colors[facet] = np.array([20, 20, 0, 255], dtype=np.uint8)
-            facet_index = facet_index + 1
+            # facet_index = facet_index + 1
         
         self.mesh = pyrender.Mesh.from_trimesh(self.tmesh, smooth=False)
         self.scene = pyrender.Scene(ambient_light=(1.0, 1.0, 1.0))
@@ -362,27 +367,118 @@ class FullTextureMapper(object):
 
             for facet_index, bbox in facet_bboxes.items():
                 # For each facet, apply the offset into the global texture map.
+                # u is along the column axis, while v is along the row axis.
                 facet_uv_coords[facet_index] = (
-                    facet_uv_coords[facet_index] + np.array([bbox[1], bbox[0]]))
+                    facet_uv_coords[facet_index] + np.array([bbox[0], bbox[1]]))
 
-            # TODO: Actually assign these UV coordinates to faces and save to a
-            # ply file.
-
+            print('Assigning per-face texture...')
+            FullTextureMapper.write_textured_trimesh(self.tmesh, facet_uv_coords,
+                                                     'texture.png',
+                                                     'textured.ply')
+            # Clean up local texture data.
+            # TODO: make this a safer operation by creating a temporary directory.
+            shutil.rmtree(self.local_texture_path)
+            
             # Debugging output.
-            resize_and_save_color_buffer_to_png(color, 1024,
-                                                image_name + '_render.png')
-            resize_and_save_depth_buffer_to_png(depth, 1024,
-                                                image_name + '_depth.png')
+            # resize_and_save_color_buffer_to_png(color, 1024,
+            #                                     image_name + '_render.png')
+            # resize_and_save_depth_buffer_to_png(depth, 1024,
+            #                                     image_name + '_depth.png')
+
+    @staticmethod
+    def write_textured_trimesh(trimesh_obj, facet_uv_coords, texture_img, out_ply):
+        # load texture image
+        img = imageio.imread(texture_img)
+        img_height, img_width, _ = img.shape
+
+        # build face-->facet mapping
+        face2facet_mapping = []
+        for facet_idx, facet in enumerate(trimesh_obj.facets):
+            for idx, face_idx in enumerate(np.sort(facet)):
+                face2facet_mapping.append([int(face_idx), (int(facet_idx), int(idx))])
+        face2facet_mapping = dict(face2facet_mapping)
+        
+        # write to ply file
+        with open(out_ply, 'w') as fp:
+            # write header
+            header = ('ply\nformat ascii 1.0\n'
+                      'comment TextureFile {}\n'
+                      'element vertex {}\n'
+                      'property float x\n'
+                      'property float y\n'
+                      'property float z\n'
+                      'element face {}\n'               
+                      'property list uint8 int32 vertex_index\n'
+                      'property list uint8 float texcoord\n'
+                      'end_header\n')
+            header = header.format(texture_img,
+                                   len(trimesh_obj.vertices),
+                                   len(trimesh_obj.faces))
+            fp.write(header)
+
+            # start writing vertices
+            for idx, vertex in enumerate(trimesh_obj.vertices):
+                vertex = np.float32(vertex)
+                fp.write('{} {} {}\n'.format(vertex[0], vertex[1], vertex[2]))
+
+            # start writing faces and textures
+            cnt = 0
+            for face_idx, face in enumerate(trimesh_obj.faces):
+                if face_idx not in face2facet_mapping:
+                    print('Face: {} has no cooresponding facet'.format(face_idx))
+                    uv_coords = np.zeros((3, 2))
+                    cnt += 1
+                else:
+                    facet_idx, idx = face2facet_mapping[face_idx]
+
+                    if facet_idx not in facet_uv_coords: 
+                        print('Face: {}, cooresponding facet: {} has no texture'.format(
+                            face_idx, facet_idx))
+                        uv_coords = np.zeros((3, 2))
+                        cnt += 1
+                    else:
+                        uv_coords = facet_uv_coords[facet_idx][idx*3:(idx+1)*3, :]
+
+                face_str = '{}'.format(np.uint8(len(face)))
+                for vertex_idx in np.sort(face):
+                    face_str += ' {}'.format(np.int32(vertex_idx))
+                face_str += '\n'
+
+                texcoord_str = '{}'.format(np.uint8(len(face) * 2))
+                for uv in uv_coords:
+                    # needs to convert the origin from upper-left to lower-left expected by OpenGL
+                    # https://community.khronos.org/t/texture-mapping-upper-left-hand-origin/61068/5
+                    u = np.float32(uv[0]) / img_width
+                    v = 1.0 - np.float32(uv[1]) / img_height
+                    texcoord_str += ' {} {}'.format(u, v)
+                texcoord_str += '\n'
+
+                fp.write(face_str + texcoord_str)
+
+            print('{}/{} ({}%) faces untextured'.format(cnt, len(trimesh_obj.faces), 100.0 * float(cnt)/len(trimesh_obj.faces)))
 
     def create_local_texture(self, camera, facet_index, image,
                              max_side_length=256):
         # Gather the vertices for this facet.
-        vertices = self.tmesh.vertices[
-            self.tmesh.faces[self.tmesh.facets[facet_index]]]
-        vertices_shape = np.shape(vertices)
-        assert vertices_shape[2] == 3
-        vertices = np.reshape(vertices,
-                              (vertices_shape[0] * vertices_shape[1], 3))
+        # vertices = self.tmesh.vertices[
+        #     self.tmesh.faces[self.tmesh.facets[facet_index]]]
+        # vertices_shape = np.shape(vertices)
+        # assert vertices_shape[2] == 3
+        # vertices = np.reshape(vertices,
+        #                       (vertices_shape[0] * vertices_shape[1], 3))
+
+        # @kai access the faces inside a facet with increasing face_idx
+        #  access the vertices inside a face with increasing vertex_idx
+        #  the same access order is used in write_textured_trimesh
+        vertices = []
+        for face_idx in np.sort(self.tmesh.facets[facet_index]):
+            face = self.tmesh.faces[face_idx]
+            if len(face) != 3:  # only collect triangular face
+                continue
+            for vertex_idx in np.sort(face):
+                vertex = self.tmesh.vertices[vertex_idx]
+                vertices.append([vertex[0], vertex[1], vertex[2]])
+        vertices = np.array(vertices)
 
         # Project the vertices into the image.
         projections = camera.project_ydown(vertices)
@@ -417,7 +513,9 @@ class FullTextureMapper(object):
             image[proj_bbox[0,1]:proj_bbox[1,1]+1,
                   proj_bbox[0,0]:proj_bbox[1,0]+1])
 
-        crop_width, crop_height = np.shape(image_cropped)
+        # crop_width, crop_height = np.shape(image_cropped)
+        # @kai
+        crop_height, crop_width = np.shape(image_cropped)
 
         # Check the size against the requested max size.
         resized_dims, scale = resized_image_dims_for_max_dim(
@@ -463,6 +561,9 @@ class FullTextureMapper(object):
             h = int(fields[4])
             
             facet_bboxes[facet_index] = (x, y, w, h)
+
+        # Clean up.
+        os.remove('/tmp/atlas.txt')
 
         return facet_bboxes
 
