@@ -513,8 +513,6 @@ class FullTextureMapper(object):
             image[proj_bbox[0,1]:proj_bbox[1,1]+1,
                   proj_bbox[0,0]:proj_bbox[1,0]+1])
 
-        # crop_width, crop_height = np.shape(image_cropped)
-        # @kai
         crop_height, crop_width = np.shape(image_cropped)
 
         # Check the size against the requested max size.
