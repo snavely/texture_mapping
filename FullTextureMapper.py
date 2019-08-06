@@ -435,7 +435,7 @@ class FullTextureMapper(object):
                         uv_coords = facet_uv_coords[facet_idx][idx*3:(idx+1)*3, :]
 
                 face_str = '{}'.format(np.uint8(len(face)))
-                for vertex_idx in np.sort(face):
+                for vertex_idx in face:
                     face_str += ' {}'.format(np.int32(vertex_idx))
                 face_str += '\n'
 
@@ -470,7 +470,7 @@ class FullTextureMapper(object):
             face = self.tmesh.faces[face_idx]
             if len(face) != 3:  # only collect triangular face
                 continue
-            for vertex_idx in np.sort(face):
+            for vertex_idx in face:
                 vertex = self.tmesh.vertices[vertex_idx]
                 vertices.append([vertex[0], vertex[1], vertex[2]])
         vertices = np.array(vertices)
