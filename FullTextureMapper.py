@@ -206,18 +206,21 @@ class FullTextureMapper(object):
         self.reconstruction = Reconstruction(recon_path)
         self.local_texture_path = local_texture_path
 
-        # @kai remove previous texture images
+        # Remove previous texture images.
+        # TODO: make this a safer operation by creating a temporary directory.
         if os.path.exists(self.local_texture_path):
             shutil.rmtree(self.local_texture_path)
         os.makedirs(self.local_texture_path)
         
-        # @kai no longer needed
+        # Kai says: no longer needed
         # self.ply_data = PlyData.read(ply_path)
         # self.vertices = self.ply_data.elements[0]
         # self.faces = self.ply_data.elements[1]
 
+        trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
-
+        print 'num_vertices: ', np.shape(self.tmesh.vertices)
+        
         # Transform vertices from UTM to ENU.
         vertices_enu = self.reconstruction.utm_to_enu(self.tmesh.vertices)
         print 'tmesh.vertices_enu:', vertices_enu[0:2, :]
@@ -364,21 +367,23 @@ class FullTextureMapper(object):
 
             for facet_index, bbox in facet_bboxes.items():
                 # For each facet, apply the offset into the global texture map.
-                # @kai u is along the column axis, while v is along the row axis
-                # facet_uv_coords[facet_index] = (
-                #     facet_uv_coords[facet_index] + np.array([bbox[1], bbox[0]]))
+                # u is along the column axis, while v is along the row axis.
                 facet_uv_coords[facet_index] = (
                     facet_uv_coords[facet_index] + np.array([bbox[0], bbox[1]]))
 
-            # TODO: Actually assign these UV coordinates to faces.
             print('Assigning per-face texture...')
-            FullTextureMapper.write_textured_trimesh(self.tmesh, facet_uv_coords, 'texture.png', 'textured.ply')
+            FullTextureMapper.write_textured_trimesh(self.tmesh, facet_uv_coords,
+                                                     'texture.png',
+                                                     'textured.ply')
+            # Clean up local texture data.
+            # TODO: make this a safer operation by creating a temporary directory.
+            shutil.rmtree(self.local_texture_path)
             
             # Debugging output.
-            resize_and_save_color_buffer_to_png(color, 1024,
-                                                image_name + '_render.png')
-            resize_and_save_depth_buffer_to_png(depth, 1024,
-                                                image_name + '_depth.png')
+            # resize_and_save_color_buffer_to_png(color, 1024,
+            #                                     image_name + '_render.png')
+            # resize_and_save_depth_buffer_to_png(depth, 1024,
+            #                                     image_name + '_depth.png')
 
     @staticmethod
     def write_textured_trimesh(trimesh_obj, facet_uv_coords, texture_img, out_ply):
@@ -556,6 +561,9 @@ class FullTextureMapper(object):
             h = int(fields[4])
             
             facet_bboxes[facet_index] = (x, y, w, h)
+
+        # Clean up.
+        os.remove('/tmp/atlas.txt')
 
         return facet_bboxes
 
