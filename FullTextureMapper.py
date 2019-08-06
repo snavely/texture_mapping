@@ -212,8 +212,10 @@ class FullTextureMapper(object):
         self.vertices = self.ply_data.elements[0]
         self.faces = self.ply_data.elements[1]
 
+        trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
-
+        print 'num_vertices: ', np.shape(self.tmesh.vertices)
+        
         # Transform vertices from UTM to ENU.
         vertices_enu = self.reconstruction.utm_to_enu(self.tmesh.vertices)
         print 'tmesh.vertices_enu:', vertices_enu[0:2, :]
@@ -363,7 +365,8 @@ class FullTextureMapper(object):
                 facet_uv_coords[facet_index] = (
                     facet_uv_coords[facet_index] + np.array([bbox[1], bbox[0]]))
 
-            # TODO: Actually assign these UV coordinates to faces.
+            # TODO: Actually assign these UV coordinates to faces and save to a
+            # ply file.
 
             # Debugging output.
             resize_and_save_color_buffer_to_png(color, 1024,
