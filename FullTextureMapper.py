@@ -230,8 +230,6 @@ class FullTextureMapper(object):
         # Trimesh facets do not include singleton faces. To make sure we cover
         # all faces, augment the facets with any remaining facets. See
         #  https://github.com/mikedh/trimesh/issues/347
-
-        # Create a set of facets that includes singleton faces.
         self.mesh_facets = self.tmesh.facets.copy().tolist()
         unincluded = np.setdiff1d(
             np.arange(len(self.tmesh.faces)),
