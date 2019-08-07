@@ -262,7 +262,7 @@ class FullTextureMapper(object):
         self.scene.add(self.mesh)
 
         self.ply_textured = None
-        # self.texture_ply()
+
 
     def color_index_to_color(self, color_index):
         # red is the lower 8-bits, then green, then blue.
@@ -339,10 +339,9 @@ class FullTextureMapper(object):
                                       dtype=np.int16)
 
         camera_index = 0
-        # for image, camera in self.reconstruction.cameras.items():
         facet_uv_coords = {}
 
-        for image_name, camera in self.reconstruction.cameras.items()[0:1]:
+        for image_name, camera in list(self.reconstruction.cameras.items())[0:1]:
             print('rendering image {}'.format(image_name))
 
             image = imageio.imread(image_name)
@@ -586,49 +585,6 @@ class FullTextureMapper(object):
     #   uv_coords: per-vertex per-face list of texture coordinates
     def create_textures_from_facet_assignments(facet_assignments):
         pass
-
-    # write texture coordinate to vertex
-    def texture_ply(self):
-        # drop the RGB properties, and add two new properties (u, v)
-        # vert_list = []
-        # for vert in self.vertices.data:
-        #     vert = vert.tolist()   # convert to tuple
-        # vertices_utm = np.reshape(self.vertices.data
-        vertices_utm = np.stack((self.vertices['x'],
-                                 self.vertices['y'],
-                                 self.vertices['z']), axis=1)
-        vertices_enu = self.reconstruction.utm_to_enu(vertices_utm)
-
-        # vert_list.append(xyz)
-
-        # vert_list.append(vert[0:3]+(u, v))
-        # vertices = np.array(vert_list,
-        #                     dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
-        #                           ('u', '<f4'), ('v', '<f4')])
-        # vert_el = PlyElement.describe(vertices, 'vertex',
-        #                                comments=['point coordinate, texture coordinate'])
-        # self.ply_textured = PlyData([vert_el, self.faces], text=True)
-        # print('ply_vertices: {}'.format(vertices_enu[0:2,:]))
-
-        renderer = pyrender.OffscreenRenderer(1000, 1000)
-        for image, camera in self.reconstruction.cameras.items():
-            # print('{}'.format(camera.project(vertices_enu[0,:])))
-            test_camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0)
-            test_camera_pose = np.array([[1, 0, 0, 0],
-                                         [0, 1, 0, 0],
-                                         [0, 0, 1, 1000.0],
-                                         [0, 0, 0, 1]])
-            # self.scene.add(camera.pyrender_camera, camera.pose)
-            self.scene.add(test_camera, pose=test_camera_pose)
-            light = pyrender.SpotLight(color=np.ones(3),
-                                       intensity=3.0,
-                                       innerConeAngle=np.pi/16.0)
-            # self.scene.add(light, pose=camera.pose)
-            # self.scene.add(light, pose=test_camera_pose)
-            # renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
-            color, depth = renderer.render(self.scene)
-            imageio.imwrite('test_render.png', color)
-
 
     # fname should not come with a file extension
     def save_texture(self, fname):
