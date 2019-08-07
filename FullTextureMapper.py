@@ -219,7 +219,7 @@ class FullTextureMapper(object):
 
         trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
-        print('num_vertices: {}'.format(np.shape(self.tmesh.vertices)))
+        print('num_vertices: {}'.format(np.shape(self.tmesh.vertices)[0]))
         
         # Transform vertices from UTM to ENU.
         vertices_enu = self.reconstruction.utm_to_enu(self.tmesh.vertices)
@@ -227,15 +227,30 @@ class FullTextureMapper(object):
         self.tmesh.vertices = vertices_enu
         # self.tmesh.export('./mesh_enu.ply')
 
-        # Recolor the facets.
-        num_facets = self.tmesh.facets.size
+        # Trimesh facets do not include singleton faces. To make sure we cover
+        # all faces, augment the facets with any remaining facets. See
+        #  https://github.com/mikedh/trimesh/issues/347
+
+        # Create a set of facets that includes singleton faces.
+        self.mesh_facets = self.tmesh.facets.copy().tolist()
+        unincluded = np.setdiff1d(
+            np.arange(len(self.tmesh.faces)),
+            np.concatenate(self.tmesh.facets))
+
+        self.mesh_facets.extend(unincluded.reshape((-1, 1)))
+        self.mesh_facets = np.array(self.mesh_facets)
+
+        # Recolor each facet with a unique color so we can count it during
+        # rendering.
+        num_facets = self.mesh_facets.size
+
         print('number of facets: {}'.format(num_facets))
         # facet_index = long(0)
 
         # TODO(snavely): Why are some facets showing up as gray? Are they
         # somehow facing the wrong direction? Do those faces not show up in the
         # list of facets?
-        for facet_index, facet in enumerate(self.tmesh.facets):
+        for facet_index, facet in enumerate(self.mesh_facets):
             # Random trimesh colors have random hue but nearly full saturation
             # and value. Useful for visualization and debugging.
 
@@ -321,7 +336,7 @@ class FullTextureMapper(object):
 
     def create_textures(self):
         num_cameras = len(self.reconstruction.cameras)
-        num_facets = self.tmesh.facets.size
+        num_facets = self.mesh_facets.size
 
         # Num cameras by num facets matrix counting the visibility of
         # each facet in each image
@@ -364,7 +379,9 @@ class FullTextureMapper(object):
                     facet_uv_coords[facet_index] + np.array([bbox[0], bbox[1]]))
 
             print('Assigning per-face texture...')
-            FullTextureMapper.write_textured_trimesh(self.tmesh, facet_uv_coords,
+            FullTextureMapper.write_textured_trimesh(self.tmesh,
+                                                     self.mesh_facets,
+                                                     facet_uv_coords,
                                                      'texture.png',
                                                      'textured.ply')
             # Clean up local texture data.
@@ -378,14 +395,15 @@ class FullTextureMapper(object):
             #                                     image_name + '_depth.png')
 
     @staticmethod
-    def write_textured_trimesh(trimesh_obj, facet_uv_coords, texture_img, out_ply):
+    def write_textured_trimesh(trimesh_obj, mesh_facets, facet_uv_coords,
+                               texture_img, out_ply):
         # load texture image
         img = imageio.imread(texture_img)
         img_height, img_width, _ = img.shape
 
         # build face-->facet mapping
         face2facet_mapping = []
-        for facet_idx, facet in enumerate(trimesh_obj.facets):
+        for facet_idx, facet in enumerate(mesh_facets):
             for idx, face_idx in enumerate(np.sort(facet)):
                 face2facet_mapping.append([int(face_idx), (int(facet_idx), int(idx))])
         face2facet_mapping = dict(face2facet_mapping)
@@ -447,13 +465,15 @@ class FullTextureMapper(object):
 
                 fp.write(face_str + texcoord_str)
 
-            print('{}/{} ({}%) faces untextured'.format(cnt, len(trimesh_obj.faces), 100.0 * float(cnt)/len(trimesh_obj.faces)))
+            print('{}/{} ({}%) faces untextured'.format(
+                cnt, len(trimesh_obj.faces),
+                100.0 * float(cnt)/len(trimesh_obj.faces)))
 
     def create_local_texture(self, camera, facet_index, image,
                              max_side_length=256):
         # Gather the vertices for this facet.
         # vertices = self.tmesh.vertices[
-        #     self.tmesh.faces[self.tmesh.facets[facet_index]]]
+        #     self.tmesh.faces[self.mesh_facets[facet_index]]]
         # vertices_shape = np.shape(vertices)
         # assert vertices_shape[2] == 3
         # vertices = np.reshape(vertices,
@@ -463,7 +483,7 @@ class FullTextureMapper(object):
         #  access the vertices inside a face with increasing vertex_idx
         #  the same access order is used in write_textured_trimesh
         vertices = []
-        for face_idx in np.sort(self.tmesh.facets[facet_index]):
+        for face_idx in np.sort(self.mesh_facets[facet_index]):
             face = self.tmesh.faces[face_idx]
             if len(face) != 3:  # only collect triangular face
                 continue
