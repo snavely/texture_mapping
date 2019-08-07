@@ -9,7 +9,6 @@ import numpy as np
 import argparse
 import trimesh
 import pyrender
-import png
 import time
 import cv2
 import imageio
@@ -45,12 +44,12 @@ def resize_and_save_color_buffer_to_png(image, max_dim, image_name):
     width = np.shape(image)[1]
 
     if width <= max_dim and height <= max_dim:
-        png.from_array(image, 'RGB').save(image_name)
+        imageio.imwrite(image_name, image)
     else:
         resized_dims, _ = resized_image_dims_for_max_dim(width, height, max_dim)
         resized = cv2.resize(image, dsize=resized_dims,
                              interpolation=cv2.INTER_AREA)
-        png.from_array(resized, 'RGB').save(image_name)
+        imageio.imwrite(image_name, resized)
 
 # Transform a depth map to the range [0,255].
 def normalize_and_discretize_depth_buffer(depth):
@@ -72,12 +71,12 @@ def resize_and_save_depth_buffer_to_png(depth, max_dim, image_name):
     width = np.shape(depth_normalized)[1]
 
     if width <= max_dim and height <= max_dim:
-        png.from_array(depth_normalized, 'L').save(image_name)
+        imageio.imwrite(image_name, depth_normalized)
     else:
         resized_dims, _ = resized_image_dims_for_max_dim(width, height, max_dim)
         resized = cv2.resize(depth_normalized, dsize=resized_dims,
                              interpolation=cv2.INTER_AREA)
-        png.from_array(resized, 'L').save(image_name)
+        imageio.imwrite(image_name, resized)
 
 def unit_projection_onto_plane(vector, normal):
     projection = vector - np.dot(vector, normal) * normal
@@ -241,9 +240,7 @@ class FullTextureMapper(object):
         # Recolor each facet with a unique color so we can count it during
         # rendering.
         num_facets = self.mesh_facets.size
-
         print('number of facets: {}'.format(num_facets))
-        # facet_index = long(0)
 
         # TODO(snavely): Why are some facets showing up as gray? Are they
         # somehow facing the wrong direction? Do those faces not show up in the
@@ -309,12 +306,12 @@ class FullTextureMapper(object):
         color, depth = self.render_from_camera(camera)
         image = imageio.imread(image_name)
 
-        self.create_local_texture(camera, 0, image)
+        # self.create_local_texture(camera, 0, image)
 
-        # resize_and_save_color_buffer_to_png(color, 1024,
-        #                                     image_name + '_render.png')
-        # resize_and_save_depth_buffer_to_png(depth, 1024,
-        #                                     image_name + '_depth.png')
+        resize_and_save_color_buffer_to_png(color, 1e6,
+                                            image_name + '_render.png')
+        resize_and_save_depth_buffer_to_png(depth, 1e6,
+                                            image_name + '_depth.png')
 
     # Render the loaded scene from the provided camera. Returns color and depth
     # buffers.
@@ -537,7 +534,7 @@ class FullTextureMapper(object):
 
         image_name = os.path.join(self.local_texture_path,
                                   'texture_%05d.png' % facet_index)
-        png.from_array(image_cropped, 'L').save(image_name)
+        imageio.imwrite(image_name, image_cropped)
 
         return local_uv_coords
 
@@ -630,8 +627,7 @@ class FullTextureMapper(object):
             # self.scene.add(light, pose=test_camera_pose)
             # renderer = pyrender.OffscreenRenderer(camera.width, camera.height)
             color, depth = renderer.render(self.scene)
-            # png.from_array(color, 'RGB').save(image + '_render.png')
-            png.from_array(color, 'RGB').save('test_render.png')
+            imageio.imwrite('test_render.png', color)
 
 
     # fname should not come with a file extension
