@@ -27,11 +27,11 @@ def resized_image_dims_for_max_dim(imwidth, imheight, max_dim):
         return (imwidth, imheight), 1.0
 
     if float(imwidth) / max_dim > float(imheight) / max_dim:
-        scale = max_dim / imwidth
+        scale = float(max_dim) / imwidth
         resized_dims = (max_dim,
                         max(int(round(float(imheight) * max_dim / imwidth)), 1))
     else:
-        scale = max_dim / imheight
+        scale = float(max_dim) / imheight
         resized_dims = (max(int(round(float(imwidth) * max_dim / imheight)), 1),
                         max_dim)
 
@@ -211,11 +211,6 @@ class FullTextureMapper(object):
             shutil.rmtree(self.local_texture_path)
         os.makedirs(self.local_texture_path)
         
-        # Kai says: no longer needed
-        # self.ply_data = PlyData.read(ply_path)
-        # self.vertices = self.ply_data.elements[0]
-        # self.faces = self.ply_data.elements[1]
-
         trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
         print('num_vertices: {}'.format(np.shape(self.tmesh.vertices)[0]))
@@ -249,13 +244,11 @@ class FullTextureMapper(object):
             # Random trimesh colors have random hue but nearly full saturation
             # and value. Useful for visualization and debugging.
 
-            # tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
+            # self.tmesh.visual.face_colors[facet] = trimesh.visual.random_color()
             r, g, b = self.color_index_to_color(facet_index)
             # Last 255 is for alpha channel (fully opaque).
             self.tmesh.visual.face_colors[facet] = np.array([r, g, b, 255],
                                                             dtype=np.uint8)
-            # self.tmesh.visual.face_colors[facet] = np.array([20, 20, 0, 255], dtype=np.uint8)
-            # facet_index = facet_index + 1
         
         self.mesh = pyrender.Mesh.from_trimesh(self.tmesh, smooth=False)
         self.scene = pyrender.Scene(ambient_light=(1.0, 1.0, 1.0))
@@ -355,8 +348,7 @@ class FullTextureMapper(object):
             for elem, count in zip(elems, counts):
                 if elem >= 0 and elem < num_facets:
                     facet_index = elem
-                    # print('Creating local texture for facet {}'.
-                    #       format(facet_index))
+
                     facet_pixel_counts[camera_index, facet_index] = count
                     uv_coords = self.create_local_texture(
                         camera, facet_index, image)
@@ -383,9 +375,9 @@ class FullTextureMapper(object):
             shutil.rmtree(self.local_texture_path)
             
             # Debugging output.
-            # resize_and_save_color_buffer_to_png(color, 1024,
+            # resize_and_save_color_buffer_to_png(color, 10e6,
             #                                     image_name + '_render.png')
-            # resize_and_save_depth_buffer_to_png(depth, 1024,
+            # resize_and_save_depth_buffer_to_png(depth, 10e6,
             #                                     image_name + '_depth.png')
 
     @staticmethod
@@ -436,8 +428,8 @@ class FullTextureMapper(object):
                     facet_idx, idx = face2facet_mapping[face_idx]
 
                     if facet_idx not in facet_uv_coords: 
-                        # print('Face: {}, corresponding facet: {} has no texture'.format(
-                        #     face_idx, facet_idx))
+                        print('Face: {}, corresponding facet: {} has no texture'.format(
+                             face_idx, facet_idx))
                         uv_coords = np.zeros((3, 2))
                         cnt += 1
                     else:
@@ -472,10 +464,6 @@ class FullTextureMapper(object):
         # assert vertices_shape[2] == 3
         # vertices = np.reshape(vertices,
         #                       (vertices_shape[0] * vertices_shape[1], 3))
-
-        # @kai access the faces inside a facet with increasing face_idx
-        #  access the vertices inside a face with increasing vertex_idx
-        #  the same access order is used in write_textured_trimesh
         vertices = []
         for face_idx in np.sort(self.mesh_facets[facet_index]):
             face = self.tmesh.faces[face_idx]
@@ -500,7 +488,6 @@ class FullTextureMapper(object):
         # Compute 2D bounding box of projected uv coordinates.
         proj_bbox = np.stack((np.amin(projections, axis=0),
                               np.amax(projections, axis=0)))
-
 
         # Snap the bounding box to integer coordinates via floor and
         # ceiling operations.
