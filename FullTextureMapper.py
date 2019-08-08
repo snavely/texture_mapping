@@ -29,10 +29,10 @@ def resized_image_dims_for_max_dim(imwidth, imheight, max_dim):
     if float(imwidth) / max_dim > float(imheight) / max_dim:
         scale = float(max_dim) / imwidth
         resized_dims = (max_dim,
-                        max(int(round(float(imheight) * max_dim / imwidth)), 1))
+                        max(int(round(float(imheight) * scale)), 1))
     else:
         scale = float(max_dim) / imheight
-        resized_dims = (max(int(round(float(imwidth) * max_dim / imheight)), 1),
+        resized_dims = (max(int(round(float(imwidth) * scale)), 1),
                         max_dim)
 
     return resized_dims, scale
