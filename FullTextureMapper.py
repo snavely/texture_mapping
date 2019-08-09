@@ -316,7 +316,7 @@ class FullTextureMapper(object):
 
         return color, depth
 
-    def create_textures(self):
+    def create_textures(self, image_path):
         num_cameras = len(self.reconstruction.cameras)
         num_facets = self.mesh_facets.size
 
@@ -325,16 +325,21 @@ class FullTextureMapper(object):
         facet_pixel_counts = np.zeros((num_cameras, num_facets),
                                       dtype=np.int16)
 
-        camera_index = 0
         facet_uv_coords = {}
 
-        tmpdir = tempfile.mkdtemp()
-        print('Writing to temporary directory {}'.format(tmpdir))
-        for image_name, camera in list(self.reconstruction.cameras.items())[0:1]:
-            print('rendering image {}'.format(image_name))
+        camera_index = 0
+        for image_name, camera in self.reconstruction.cameras.items():
+            image_name_full_path = os.path.join(image_path, image_name)
+            print('Rendering image {}'.format(image_name_full_path))
 
-            image = imageio.imread(image_name)
+            image = imageio.imread(image_name_full_path)
             color, depth = self.render_from_camera(camera)
+
+            # Debugging output.
+            # resize_and_save_color_buffer_to_png(color, 10e6,
+            #                                     image_name + '_render.png')
+            # resize_and_save_depth_buffer_to_png(depth, 10e6,
+            #                                     image_name + '_depth.png')
 
             # Count number of times each color appears.
             color_indices = self.color_buffer_to_color_indices(color)
@@ -344,34 +349,55 @@ class FullTextureMapper(object):
             for elem, count in zip(elems, counts):
                 if elem >= 0 and elem < num_facets:
                     facet_index = elem
-
                     facet_pixel_counts[camera_index, facet_index] = count
-                    uv_coords = self.create_local_texture(
-                        camera, facet_index, image, tmpdir)
-                    facet_uv_coords[facet_index] = uv_coords
                 else:
                     print('Skipping out-of-range facet_index {}'.format(elem))
 
-            facet_bboxes = self.generate_texture_atlas(tmpdir, 'texture.png')
+            camera_index += 1
 
-            for facet_index, bbox in facet_bboxes.items():
-                # For each facet, apply the offset into the global texture map.
-                # u is along the column axis, while v is along the row axis.
-                facet_uv_coords[facet_index] = (
-                    facet_uv_coords[facet_index] + np.array([bbox[0], bbox[1]]))
+        # Create a temporary directory for storing a png for each local texture.
+        tmpdir = tempfile.mkdtemp()
+        print('Writing to temporary directory {}'.format(tmpdir))
 
-            print('Assigning per-face texture...')
-            FullTextureMapper.write_textured_trimesh(self.tmesh,
-                                                     self.mesh_facets,
-                                                     facet_uv_coords,
-                                                     'texture.png',
-                                                     'textured.ply')
-            # Debugging output.
-            # resize_and_save_color_buffer_to_png(color, 10e6,
-            #                                     image_name + '_render.png')
-            # resize_and_save_depth_buffer_to_png(depth, 10e6,
-            #                                     image_name + '_depth.png')
+        # For now, select the view with the maximum projected pixel footprint as
+        # the best view for each face.
+        best_view_per_facet = np.argmax(facet_pixel_counts, axis=0)
 
+        camera_index = 0
+        for image_name, camera in self.reconstruction.cameras.items():
+            (facet_indices,) = np.nonzero(best_view_per_facet == camera_index)
+
+            image_name_full_path = os.path.join(image_path, image_name)
+            image = imageio.imread(image_name_full_path)
+
+            num_facet_indices = np.shape(facet_indices)[0]
+            print('Extracting {} textures from image {}'.format(
+                num_facet_indices, image_name))
+
+            if num_facet_indices == 0:
+                continue
+
+            for facet_index in np.ndarray.tolist(facet_indices):
+                uv_coords = self.create_local_texture(
+                    camera, facet_index, image, tmpdir)
+                facet_uv_coords[facet_index] = uv_coords
+
+            camera_index += 1
+
+        facet_bboxes = self.generate_texture_atlas(tmpdir, 'texture.png')
+
+        for facet_index, bbox in facet_bboxes.items():
+            # For each facet, apply the offset into the global texture map.
+            # u is along the column axis, while v is along the row axis.
+            facet_uv_coords[facet_index] = (
+                facet_uv_coords[facet_index] + np.array([bbox[0], bbox[1]]))
+
+        print('Assigning per-face texture...')
+        FullTextureMapper.write_textured_trimesh(self.tmesh,
+                                                 self.mesh_facets,
+                                                 facet_uv_coords,
+                                                 'texture.png',
+                                                 'textured.ply')
         # Clean up.
         shutil.rmtree(tmpdir)
 
@@ -637,7 +663,7 @@ def test():
 
     # texture_mapper.test_rendering()
     # texture_mapper.test_rendering_on_real_camera()
-    texture_mapper.create_textures()
+    texture_mapper.create_textures('testdata/skew_correct/images')
 
     # texture_mapper.save('testdata/textured')
 
