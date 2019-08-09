@@ -437,7 +437,8 @@ class FullTextureMapper(object):
 
                 texcoord_str = '{}'.format(np.uint8(len(face) * 2))
                 for uv in uv_coords:
-                    # needs to convert the origin from upper-left to lower-left expected by OpenGL
+                    # Need to convert the origin from upper-left to lower-left
+                    # as expected by OpenGL.
                     # https://community.khronos.org/t/texture-mapping-upper-left-hand-origin/61068/5
                     u = np.float32(uv[0]) / img_width
                     v = 1.0 - np.float32(uv[1]) / img_height
@@ -451,7 +452,7 @@ class FullTextureMapper(object):
                 100.0 * float(cnt)/len(trimesh_obj.faces)))
 
     def create_local_texture(self, camera, facet_index, image, texture_path,
-                             max_side_length=256):
+                             max_side_length=512):
         # Gather the vertices for this facet.
         # vertices = self.tmesh.vertices[
         #     self.tmesh.faces[self.mesh_facets[facet_index]]]
@@ -491,9 +492,8 @@ class FullTextureMapper(object):
              [np.ceil(proj_bbox[1,0]), np.ceil(proj_bbox[1,1])]],
             dtype=np.int32)
 
-        # TODO(snavely): optionally pad the bounding box to avoid
-        # boundary effects.
-        
+        # TODO(snavely): optionally pad the bounding box to avoid boundary
+        # effects (can also do this in the atlas creation stage).
         local_uv_coords = projections - proj_bbox[0,:]
 
         # Crop the image and save to a file.
