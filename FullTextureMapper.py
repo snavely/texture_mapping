@@ -529,7 +529,7 @@ class FullTextureMapper(object):
     # bounding box for each facet's local texture within the atlas.
     def generate_texture_atlas(self, output_image_name):
         print('Generating texture atlas')
-        atlas_bin='/phoenix/S2/snavely/code/atlas/atlas'
+        atlas_bin='atlas'
         subprocess.call(
             '{} {} -o {} -t {}'.format(atlas_bin,
                                        self.local_texture_path,
