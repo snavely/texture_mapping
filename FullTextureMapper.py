@@ -13,6 +13,7 @@ import time
 import cv2
 import imageio
 import subprocess
+import tempfile
 from pyquaternion import Quaternion
 from satellite_stereo.lib import latlon_utm_converter
 from satellite_stereo.lib import latlonalt_enu_converter
@@ -201,16 +202,9 @@ class Reconstruction(object):
 
 
 class FullTextureMapper(object):
-    def __init__(self, ply_path, recon_path, local_texture_path):
+    def __init__(self, ply_path, recon_path):
         self.reconstruction = Reconstruction(recon_path)
-        self.local_texture_path = local_texture_path
 
-        # Remove previous texture images.
-        # TODO: make this a safer operation by creating a temporary directory.
-        if os.path.exists(self.local_texture_path):
-            shutil.rmtree(self.local_texture_path)
-        os.makedirs(self.local_texture_path)
-        
         trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
         print('num_vertices: {}'.format(np.shape(self.tmesh.vertices)[0]))
@@ -334,6 +328,8 @@ class FullTextureMapper(object):
         camera_index = 0
         facet_uv_coords = {}
 
+        tmpdir = tempfile.mkdtemp()
+        print('Writing to temporary directory {}'.format(tmpdir))
         for image_name, camera in list(self.reconstruction.cameras.items())[0:1]:
             print('rendering image {}'.format(image_name))
 
@@ -351,12 +347,12 @@ class FullTextureMapper(object):
 
                     facet_pixel_counts[camera_index, facet_index] = count
                     uv_coords = self.create_local_texture(
-                        camera, facet_index, image)
+                        camera, facet_index, image, tmpdir)
                     facet_uv_coords[facet_index] = uv_coords
                 else:
                     print('Skipping out-of-range facet_index {}'.format(elem))
 
-            facet_bboxes = self.generate_texture_atlas('texture.png')
+            facet_bboxes = self.generate_texture_atlas(tmpdir, 'texture.png')
 
             for facet_index, bbox in facet_bboxes.items():
                 # For each facet, apply the offset into the global texture map.
@@ -370,15 +366,14 @@ class FullTextureMapper(object):
                                                      facet_uv_coords,
                                                      'texture.png',
                                                      'textured.ply')
-            # Clean up local texture data.
-            # TODO: make this a safer operation by creating a temporary directory.
-            shutil.rmtree(self.local_texture_path)
-            
             # Debugging output.
             # resize_and_save_color_buffer_to_png(color, 10e6,
             #                                     image_name + '_render.png')
             # resize_and_save_depth_buffer_to_png(depth, 10e6,
             #                                     image_name + '_depth.png')
+
+        # Clean up.
+        shutil.rmtree(tmpdir)
 
     @staticmethod
     def write_textured_trimesh(trimesh_obj, mesh_facets, facet_uv_coords,
@@ -455,7 +450,7 @@ class FullTextureMapper(object):
                 cnt, len(trimesh_obj.faces),
                 100.0 * float(cnt)/len(trimesh_obj.faces)))
 
-    def create_local_texture(self, camera, facet_index, image,
+    def create_local_texture(self, camera, facet_index, image, texture_path,
                              max_side_length=256):
         # Gather the vertices for this facet.
         # vertices = self.tmesh.vertices[
@@ -518,7 +513,7 @@ class FullTextureMapper(object):
             image_cropped = cv2.resize(image_cropped, dsize=resized_dims,
                                        interpolation=cv2.INTER_AREA)
 
-        image_name = os.path.join(self.local_texture_path,
+        image_name = os.path.join(texture_path,
                                   'texture_%05d.png' % facet_index)
         imageio.imwrite(image_name, image_cropped)
 
@@ -527,12 +522,12 @@ class FullTextureMapper(object):
 
     # Generate a texture atlas by running the 'atlas' program, and returning a
     # bounding box for each facet's local texture within the atlas.
-    def generate_texture_atlas(self, output_image_name):
-        print('Generating texture atlas')
+    def generate_texture_atlas(self, texture_path, output_image_name):
+        print('Generating texture atlas...')
+        
         atlas_bin='/phoenix/S2/snavely/code/atlas/atlas'
         subprocess.call(
-            '{} {} -o {} -t {}'.format(atlas_bin,
-                                       self.local_texture_path,
+            '{} {} -o {} -t {}'.format(atlas_bin, texture_path,
                                        output_image_name,
                                        '/tmp/atlas.txt'), shell=True)
 
@@ -638,7 +633,7 @@ def test():
 
     # Location of the ply file to be texture mapped.
     ply_path = 'testdata/aoi.ply'
-    texture_mapper = FullTextureMapper(ply_path, recon_path, '/tmp/textures')
+    texture_mapper = FullTextureMapper(ply_path, recon_path)
 
     # texture_mapper.test_rendering()
     # texture_mapper.test_rendering_on_real_camera()
