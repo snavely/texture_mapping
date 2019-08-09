@@ -525,7 +525,7 @@ class FullTextureMapper(object):
     def generate_texture_atlas(self, texture_path, output_image_name):
         print('Generating texture atlas...')
         
-        atlas_bin='/phoenix/S2/snavely/code/atlas/atlas'
+        atlas_bin='atlas'
         subprocess.call(
             '{} {} -o {} -t {}'.format(atlas_bin, texture_path,
                                        output_image_name,
