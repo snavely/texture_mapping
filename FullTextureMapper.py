@@ -146,13 +146,13 @@ class PerspectiveCamera(object):
         return proj
 
 class Reconstruction(object):
-    def __init__(self, recon_path):
+    def __init__(self, aoi_filename, recon_path):
         if not os.path.isabs(recon_path):
             fpath = os.path.abspath(recon_path)
         self.recon_path = recon_path
 
         # Get metadata from aoi.json file.
-        with open(os.path.join(recon_path, 'aoi.json')) as fp:
+        with open(aoi_filename) as fp:
             self.bbox = json.load(fp)
             self.lat0 = (self.bbox['lat_min'] + self.bbox['lat_max']) / 2.0
             self.lon0 = (self.bbox['lon_min'] + self.bbox['lon_max']) / 2.0
@@ -166,8 +166,8 @@ class Reconstruction(object):
         with open(
             os.path.join(
             recon_path,
-            'colmap/sfm_pinhole/debug/kai_cameras.json')) as fp:
-            # 'colmap/skew_correct/pinhole_dict.json')) as fp:
+            'sfm_pinhole/debug/kai_cameras.json')) as fp:
+            # 'skew_correct/pinhole_dict.json')) as fp:
             camera_data = json.load(fp)
             self.cameras = {}
             for image, camera in camera_data.items():
@@ -202,8 +202,8 @@ class Reconstruction(object):
 
 
 class FullTextureMapper(object):
-    def __init__(self, ply_path, recon_path):
-        self.reconstruction = Reconstruction(recon_path)
+    def __init__(self, ply_path, aoi_filename, recon_path):
+        self.reconstruction = Reconstruction(aoi_filename, recon_path)
 
         trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
@@ -316,7 +316,7 @@ class FullTextureMapper(object):
 
         return color, depth
 
-    def create_textures(self, image_path):
+    def create_textures(self, image_path, output_stem):
         num_cameras = len(self.reconstruction.cameras)
         num_facets = self.mesh_facets.size
 
@@ -384,7 +384,7 @@ class FullTextureMapper(object):
 
             camera_index += 1
 
-        facet_bboxes = self.generate_texture_atlas(tmpdir, 'texture.png')
+        facet_bboxes = self.generate_texture_atlas(tmpdir, output_stem + '.png')
 
         for facet_index, bbox in facet_bboxes.items():
             # For each facet, apply the offset into the global texture map.
@@ -396,9 +396,9 @@ class FullTextureMapper(object):
         FullTextureMapper.write_textured_trimesh(self.tmesh,
                                                  self.mesh_facets,
                                                  facet_uv_coords,
-                                                 'texture.png',
-                                                 'textured.ply')
-        # Clean up.
+                                                 output_stem + '.png',
+                                                 output_stem + '.ply')
+        # Clean up temporary local textures.
         shutil.rmtree(tmpdir)
 
     @staticmethod
@@ -586,25 +586,35 @@ def test():
     recon_path = 'testdata'
 
     # Location of the ply file to be texture mapped.
+    aoi_filename = 'testdata/aoi.json'
     ply_path = 'testdata/aoi.ply'
-    texture_mapper = FullTextureMapper(ply_path, recon_path)
+    texture_mapper = FullTextureMapper(ply_path, aoi_filename, recon_path)
 
     # texture_mapper.test_rendering()
     # texture_mapper.test_rendering_on_real_camera()
-    texture_mapper.create_textures('testdata/skew_correct/images')
+    texture_mapper.create_textures('testdata/skew_correct/images',
+                                   'textured_mesh')
 
 
 def deploy():
-    parser = argparse.ArgumentParser(description='texture-map a .ply to a .tif ')
-    parser.add_argument('mesh', help='path/to/.ply/file')
-    parser.add_argument('orthophoto', help='path/to/.tif/file')
-    parser.add_argument('filename', help='filename for the output files. will output '
-                                       '{filename}.ply and {filename}.jpg')
+    parser = argparse.ArgumentParser(
+        description='texture map a .ply file by projecting into camera views')
+    parser.add_argument('--mesh', required=True, help='path/to/input.ply')
+    parser.add_argument('--aoi', required=True,
+                        help='path/to/aoi.json specifying area of interest')
+    parser.add_argument('--colmap_base_path', required=True,
+                        help='base path to colmap reconstruction')
+    parser.add_argument('--output', required=True,
+                        help='stem for the output filenames. will output '
+                        '{filename}.ply and {filename}.png')
     args = parser.parse_args()
 
-    texture_mapper = FullTextureMapper(ply_path, recon_path)
-    texture_mapper.create_textures('testdata/skew_correct/images')
+    texture_mapper = FullTextureMapper(args.mesh, args.aoi, args.colmap_base_path)
+
+    skew_corrected_image_path = os.path.join(args.colmap_base_path,
+                                             'skew_correct/images')
+    texture_mapper.create_textures(skew_corrected_image_path, args.output)
 
 if __name__ == '__main__':
-    test()
-    # deploy()
+    # test()
+    deploy()
