@@ -421,9 +421,9 @@ class FullTextureMapper(object):
             header = ('ply\nformat ascii 1.0\n'
                       'comment TextureFile {}\n'
                       'element vertex {}\n'
-                      'property float x\n'
-                      'property float y\n'
-                      'property float z\n'
+                      'property double x\n'
+                      'property double y\n'
+                      'property double z\n'
                       'element face {}\n'               
                       'property list uint8 int32 vertex_index\n'
                       'property list uint8 float texcoord\n'
@@ -435,7 +435,7 @@ class FullTextureMapper(object):
 
             # start writing vertices
             for idx, vertex in enumerate(trimesh_obj.vertices):
-                vertex = np.float32(vertex)
+                #vertex = np.float32(vertex)
                 fp.write('{} {} {}\n'.format(vertex[0], vertex[1], vertex[2]))
 
             # start writing faces and textures
