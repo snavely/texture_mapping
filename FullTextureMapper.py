@@ -412,7 +412,8 @@ class FullTextureMapper(object):
         face2facet_mapping = []
         for facet_idx, facet in enumerate(mesh_facets):
             for idx, face_idx in enumerate(np.sort(facet)):
-                face2facet_mapping.append([int(face_idx), (int(facet_idx), int(idx))])
+                face2facet_mapping.append([int(face_idx),
+                                           (int(facet_idx), int(idx))])
         face2facet_mapping = dict(face2facet_mapping)
         
         # write to ply file
@@ -449,8 +450,8 @@ class FullTextureMapper(object):
                     facet_idx, idx = face2facet_mapping[face_idx]
 
                     if facet_idx not in facet_uv_coords: 
-                        print('Face: {}, corresponding facet: {} has no texture'.format(
-                             face_idx, facet_idx))
+                        print('Face: {}, corresponding facet: {} has no texture'.
+                              format(face_idx, facet_idx))
                         uv_coords = np.zeros((3, 2))
                         cnt += 1
                     else:
