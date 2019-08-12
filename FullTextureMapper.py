@@ -580,78 +580,6 @@ class FullTextureMapper(object):
         return facet_bboxes
 
 
-    # Given an assignment from facets to images, create a texture map.
-    # Returns a texture image and a list of uv-coordinates per vertex
-    # per face.
-    # 
-    # Inputs:
-    #   facet_assignments: array of length num_facets, containing
-    #     string identifying image to be used for texturing.
-    #
-    # Outputs:
-    #   image: texture atlas
-    #   uv_coords: per-vertex per-face list of texture coordinates
-    def create_textures_from_facet_assignments(facet_assignments):
-        pass
-
-    # fname should not come with a file extension
-    def save_texture(self, fname):
-        # convert tiff to jpg
-        os.system('gdal_translate -ot Byte -of jpeg {} {}.jpg'.format(self.tiff.fpath, fname))
-        # remove the intermediate file
-        os.remove(fname + '.jpg.aux.xml')
-
-    # fname and texture_fname should not come with a file extension
-    def save_ply(self, fname, texture_fname):
-        name = texture_fname[texture_fname.rfind('/')+1:]
-        self.ply_textured.comments = ['TextureFile {}.jpg'.format(name), ]   # add texture file into the comment
-        self.ply_textured.write('{}.ply'.format(fname))
-        TextureMapper.insert_uv_to_face('{}.ply'.format(fname))
-
-    def save(self, fname):
-        # convert tiff to jpg
-        os.system('gdal_translate -ot Byte -of jpeg {} {}.jpg'.format(self.tiff.fpath, fname))
-        # remove the intermediate file
-        os.remove(fname + '.jpg.aux.xml')
-        # save ply
-        name = fname[fname.rfind('/')+1:]
-        self.ply_textured.comments = ['TextureFile {}.jpg'.format(name), ]   # add texture file into the comment
-        self.ply_textured.write('{}.ply'.format(fname))
-        TextureMapper.insert_uv_to_face('{}.ply'.format(fname))
-
-    # write texture coordinate to face
-    @staticmethod
-    def insert_uv_to_face(ply_path):
-        ply = PlyData.read(ply_path)
-        uv_coord = ply['vertex'][['u', 'v']]
-        vert_cnt = ply['vertex'].count
-
-        with open(ply_path) as fp:
-            all_lines = fp.readlines()
-        modified = []
-        flag = False; cnt = 0
-        for line in all_lines:
-            line = line.strip()
-            if cnt < vert_cnt:
-                modified.append(line)
-            if line == 'property list uchar int vertex_indices':
-                modified.append('property list uchar float texcoord')
-            if flag:
-                cnt += 1
-            if line == 'end_header':
-                flag = True
-            if cnt > vert_cnt: # start modify faces
-                face = [int(x) for x in line.split(' ')]
-                face_vert_cnt = face[0]
-                line += ' {}'.format(face_vert_cnt * 2)
-                for i in range(1, face_vert_cnt + 1):
-                    idx = face[i]
-                    line += ' {} {}'.format(uv_coord[idx]['u'],  uv_coord[idx]['v'])
-                modified.append(line)
-        with open(ply_path, 'w') as fp:
-            fp.writelines([line + '\n' for line in modified])
-
-
 def test():
     # Base path for the reconstruction (cameras and images) to be used
     # in texture mapping.
@@ -665,8 +593,6 @@ def test():
     # texture_mapper.test_rendering_on_real_camera()
     texture_mapper.create_textures('testdata/skew_correct/images')
 
-    # texture_mapper.save('testdata/textured')
-
 
 def deploy():
     parser = argparse.ArgumentParser(description='texture-map a .ply to a .tif ')
@@ -676,9 +602,8 @@ def deploy():
                                        '{filename}.ply and {filename}.jpg')
     args = parser.parse_args()
 
-    texture_mapper = TextureMapper(args.mesh, args.orthophoto)
-    texture_mapper.save(args.filename)
-
+    texture_mapper = FullTextureMapper(ply_path, recon_path)
+    texture_mapper.create_textures('testdata/skew_correct/images')
 
 if __name__ == '__main__':
     test()
