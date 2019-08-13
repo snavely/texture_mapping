@@ -316,7 +316,7 @@ class FullTextureMapper(object):
 
         return color, depth
 
-    def create_textures(self, image_path, output_stem):
+    def create_textures(self, image_path, output_prefix):
         num_cameras = len(self.reconstruction.cameras)
         num_facets = self.mesh_facets.size
 
@@ -359,6 +359,13 @@ class FullTextureMapper(object):
         tmpdir = tempfile.mkdtemp()
         print('Writing to temporary directory {}'.format(tmpdir))
 
+        # Create the output directory if it doesn't exist.
+        if not os.path.isabs(output_prefix):
+            output_prefix = os.path.abspath(output_prefix)
+
+        if not os.path.exists(os.path.dirname(output_prefix)):
+            os.makedirs(os.path.dirname(output_prefix))
+
         # For now, select the view with the maximum projected pixel footprint as
         # the best view for each face.
         best_view_per_facet = np.argmax(facet_pixel_counts, axis=0)
@@ -385,7 +392,8 @@ class FullTextureMapper(object):
 
             camera_index += 1
 
-        facet_bboxes = self.generate_texture_atlas(tmpdir, output_stem + '.png')
+        facet_bboxes = self.generate_texture_atlas(tmpdir,
+                                                   output_prefix + '.png')
 
         for facet_index, bbox in facet_bboxes.items():
             # For each facet, apply the offset into the global texture map.
@@ -397,8 +405,8 @@ class FullTextureMapper(object):
         FullTextureMapper.write_textured_trimesh(self.tmesh,
                                                  self.mesh_facets,
                                                  facet_uv_coords,
-                                                 output_stem + '.png',
-                                                 output_stem + '.ply')
+                                                 output_prefix + '.png',
+                                                 output_prefix + '.ply')
         # Clean up temporary local textures.
         shutil.rmtree(tmpdir)
 
@@ -430,7 +438,7 @@ class FullTextureMapper(object):
                       'property list uint8 int32 vertex_index\n'
                       'property list uint8 float texcoord\n'
                       'end_header\n')
-            header = header.format(texture_img,
+            header = header.format(os.path.basename(texture_img),
                                    len(trimesh_obj.vertices),
                                    len(trimesh_obj.faces))
             fp.write(header)
