@@ -226,14 +226,22 @@ class FullTextureMapper(object):
         self.mesh_facets.extend(unincluded.reshape((-1, 1)))
         self.mesh_facets = np.array(self.mesh_facets)
 
+        # Additionally, keep track of the normals of the augmented
+        # facets.
+        area_faces = self.tmesh.area_faces
+
+        # The face index of the largest face in each facet.
+        largest_face_index = np.array([i[area_faces[i].argmax()]
+                                       for i in self.mesh_facets])
+
+        # (n,3) float, unit normal vectors of facet plane.
+        self.facet_normals = self.tmesh.face_normals[largest_face_index]
+
         # Recolor each facet with a unique color so we can count it during
         # rendering.
         num_facets = self.mesh_facets.size
         print('number of facets: {}'.format(num_facets))
 
-        # TODO(snavely): Why are some facets showing up as gray? Are they
-        # somehow facing the wrong direction? Do those faces not show up in the
-        # list of facets?
         for facet_index, facet in enumerate(self.mesh_facets):
             # Random trimesh colors have random hue but nearly full saturation
             # and value. Useful for visualization and debugging.
@@ -371,6 +379,7 @@ class FullTextureMapper(object):
         best_view_per_facet = np.argmax(facet_pixel_counts, axis=0)
 
         camera_index = 0
+        num_downward_facing_facets = 0
         for image_name, camera in self.reconstruction.cameras.items():
             (facet_indices,) = np.nonzero(best_view_per_facet == camera_index)
 
@@ -385,13 +394,22 @@ class FullTextureMapper(object):
                 continue
 
             for facet_index in np.ndarray.tolist(facet_indices):
-                # TODO(snavely): Check facet normal here.
+                # Skip texturing of facets pointing downward (i.e., with
+                # strongly negative z-component of normal in ENU coordinates.
+                if self.facet_normals[facet_index,2] < -0.9:
+                    num_downward_facing_facets += 1
+                    continue
+                
                 uv_coords = self.create_local_texture(
                     camera, facet_index, image, tmpdir)
                 facet_uv_coords[facet_index] = uv_coords
 
             camera_index += 1
 
+        print('{} / {} ({}%) of facets are pointing downward'.
+              format(num_downward_facing_facets, num_facets,
+                     100.0 * float(num_downward_facing_facets) / num_facets))
+        
         facet_bboxes = self.generate_texture_atlas(tmpdir,
                                                    output_prefix + '.png')
 
@@ -459,8 +477,9 @@ class FullTextureMapper(object):
                     facet_idx, idx = face2facet_mapping[face_idx]
 
                     if facet_idx not in facet_uv_coords: 
-                        print('Face: {}, corresponding facet: {} has no texture'.
-                              format(face_idx, facet_idx))
+                        # print('Face: {}, corresponding facet: '
+                        #       '{} has no texture'.
+                        #       format(face_idx, facet_idx))
                         uv_coords = np.zeros((3, 2))
                         cnt += 1
                     else:
@@ -483,9 +502,9 @@ class FullTextureMapper(object):
 
                 fp.write(face_str + texcoord_str)
 
-            print('{}/{} ({}%) faces untextured'.format(
+            print('{} / {} ({}%) of faces untextured'.format(
                 cnt, len(trimesh_obj.faces),
-                100.0 * float(cnt)/len(trimesh_obj.faces)))
+                100.0 * float(cnt) / len(trimesh_obj.faces)))
 
     def create_local_texture(self, camera, facet_index, image, texture_path,
                              max_side_length=512):
