@@ -166,7 +166,7 @@ class Reconstruction(object):
         with open(
             os.path.join(
             recon_path,
-            'sfm_pinhole/debug/kai_cameras.json')) as fp:
+            'sfm_pinhole/init_camera_dict.json')) as fp:
             # 'skew_correct/pinhole_dict.json')) as fp:
             camera_data = json.load(fp)
             self.cameras = {}
@@ -378,6 +378,7 @@ class FullTextureMapper(object):
                 continue
 
             for facet_index in np.ndarray.tolist(facet_indices):
+                # TODO(snavely): Check facet normal here.
                 uv_coords = self.create_local_texture(
                     camera, facet_index, image, tmpdir)
                 facet_uv_coords[facet_index] = uv_coords
