@@ -556,7 +556,7 @@ class FullTextureMapper(object):
             image[proj_bbox[0,1]:proj_bbox[1,1]+1,
                   proj_bbox[0,0]:proj_bbox[1,0]+1])
 
-        crop_height, crop_width = np.shape(image_cropped)
+        crop_height, crop_width = np.shape(image_cropped)[:2]
 
         # Check the size against the requested max size.
         resized_dims, scale = resized_image_dims_for_max_dim(
