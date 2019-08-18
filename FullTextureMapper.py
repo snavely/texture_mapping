@@ -3,6 +3,7 @@
 
 import os
 os.environ["PYOPENGL_PLATFORM"] = "egl"
+import sys
 import json
 import re
 import numpy as np
@@ -85,19 +86,28 @@ def unit_projection_onto_plane(vector, normal):
 
 
 class PerspectiveCamera(object):
-    def __init__(self, image_name, camera_spec):
+    def __init__(self, image_name, camera_spec, use_skewed_images=False):
         self.image_name = image_name
         self.width = camera_spec[0]
         self.height = camera_spec[1]
-        self.K = np.array([[camera_spec[2],            0.0, camera_spec[4]],
+
+        skew = 0.0
+        ext_start_idx = 6 # Starting index of extrinsics
+        if use_skewed_images:
+            skew = camera_spec[6]
+            ext_start_idx = 7
+        
+        self.K = np.array([[camera_spec[2],           skew, camera_spec[4]],
                            [           0.0, camera_spec[3], camera_spec[5]],
                            [           0.0,            0.0,            1.0]])
-        quat = Quaternion(camera_spec[6], camera_spec[7],
-                          camera_spec[8], camera_spec[9])
+        quat = Quaternion(camera_spec[ext_start_idx+0],
+                          camera_spec[ext_start_idx+1],
+                          camera_spec[ext_start_idx+2],
+                          camera_spec[ext_start_idx+3])
         self.R = quat.rotation_matrix
-        self.t = np.array([camera_spec[10],
-                           camera_spec[11],
-                           camera_spec[12]]).transpose()
+        self.t = np.array([camera_spec[ext_start_idx+4],
+                           camera_spec[ext_start_idx+5],
+                           camera_spec[ext_start_idx+6]]).transpose()
 
         # Save the "standard" y-down pose.
         self.pose_ydown = np.concatenate(
@@ -130,7 +140,7 @@ class PerspectiveCamera(object):
         self.pyrender_camera = pyrender.IntrinsicsCamera(
             fx=camera_spec[2], fy=camera_spec[3],
             cx=camera_spec[4], cy=camera_spec[5],
-            znear=znear, zfar=zfar, name=image_name)
+            znear=znear, zfar=zfar, name=image_name, skew=skew)
 
     def project_ydown(self, points):
         num_points = np.shape(points)[0]
@@ -146,7 +156,7 @@ class PerspectiveCamera(object):
         return proj
 
 class Reconstruction(object):
-    def __init__(self, aoi_filename, recon_path):
+    def __init__(self, aoi_filename, recon_path, use_skewed_images=False):
         if not os.path.isabs(recon_path):
             fpath = os.path.abspath(recon_path)
         self.recon_path = recon_path
@@ -163,15 +173,18 @@ class Reconstruction(object):
         self.hemisphere = self.bbox['hemisphere']
 
         # Read the camera data.
-        with open(
-            os.path.join(
-            recon_path,
-            'sfm_pinhole/init_camera_dict.json')) as fp:
-            # 'skew_correct/pinhole_dict.json')) as fp:
+        camera_file = os.path.join(recon_path,
+                                   'sfm_pinhole/init_camera_dict.json')
+        if use_skewed_images:
+            camera_file = os.path.join(recon_path,
+                                       'sfm_perspective/init_camera_dict.json')
+
+        with open(camera_file) as fp:
             camera_data = json.load(fp)
             self.cameras = {}
-            for image, camera in camera_data.items():
-                self.cameras[image] = PerspectiveCamera(image, camera)
+            for image, camera_spec in camera_data.items():
+                self.cameras[image] = PerspectiveCamera(image, camera_spec,
+                                                        use_skewed_images)
 
     def write_meta(self, fname):
         with open(fname, 'w') as fp:
@@ -202,8 +215,10 @@ class Reconstruction(object):
 
 
 class FullTextureMapper(object):
-    def __init__(self, ply_path, aoi_filename, recon_path):
-        self.reconstruction = Reconstruction(aoi_filename, recon_path)
+    def __init__(self, ply_path, aoi_filename, recon_path,
+                 use_skewed_images=False):
+        self.reconstruction = Reconstruction(aoi_filename, recon_path,
+                                             use_skewed_images)
 
         trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
@@ -305,8 +320,8 @@ class FullTextureMapper(object):
 
         resize_and_save_color_buffer_to_png(color, 1e6,
                                             image_name + '_render.png')
-        resize_and_save_depth_buffer_to_png(depth, 1e6,
-                                            image_name + '_depth.png')
+        # resize_and_save_depth_buffer_to_png(depth, 1e6,
+        #                                     image_name + '_depth.png')
 
     # Render the loaded scene from the provided camera. Returns color and depth
     # buffers.
@@ -361,6 +376,7 @@ class FullTextureMapper(object):
                 else:
                     print('Skipping out-of-range facet_index {}'.format(elem))
 
+            sys.stdout.flush()
             camera_index += 1
 
         # Create a temporary directory for storing a png for each local texture.
@@ -507,7 +523,7 @@ class FullTextureMapper(object):
                 100.0 * float(cnt) / len(trimesh_obj.faces)))
 
     def create_local_texture(self, camera, facet_index, image, texture_path,
-                             max_side_length=512):
+                             max_side_length=1024):
         # Gather the vertices for this facet.
         # vertices = self.tmesh.vertices[
         #     self.tmesh.faces[self.mesh_facets[facet_index]]]
@@ -617,7 +633,8 @@ def test():
     # Location of the ply file to be texture mapped.
     aoi_filename = 'testdata/aoi.json'
     ply_path = 'testdata/aoi.ply'
-    texture_mapper = FullTextureMapper(ply_path, aoi_filename, recon_path)
+    texture_mapper = FullTextureMapper(ply_path, aoi_filename,
+                                       recon_path, False)
 
     # texture_mapper.test_rendering()
     # texture_mapper.test_rendering_on_real_camera()
@@ -636,13 +653,24 @@ def deploy():
     parser.add_argument('--output', required=True,
                         help='stem for the output filenames. will output '
                         '{filename}.ply and {filename}.png')
+    parser.add_argument('--use_skewed_images',
+                        action='store_true',
+                        help='if true, use original skewed'
+                             '(non-skew-corrected) images')
     args = parser.parse_args()
 
-    texture_mapper = FullTextureMapper(args.mesh, args.aoi, args.colmap_base_path)
+    texture_mapper = FullTextureMapper(args.mesh, args.aoi,
+                                       args.colmap_base_path,
+                                       args.use_skewed_images)
 
-    skew_corrected_image_path = os.path.join(args.colmap_base_path,
-                                             'skew_correct/images')
-    texture_mapper.create_textures(skew_corrected_image_path, args.output)
+    if not args.use_skewed_images:
+        image_path = os.path.join(args.colmap_base_path,
+                                  'skew_correct/images')
+    else:
+        image_path = os.path.join(args.colmap_base_path,
+                                  'sfm_perspective/images')
+
+    texture_mapper.create_textures(image_path, args.output)
 
 if __name__ == '__main__':
     # test()
