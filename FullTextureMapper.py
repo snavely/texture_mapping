@@ -449,7 +449,7 @@ class FullTextureMapper(object):
                                texture_img, out_ply):
         # load texture image
         img = imageio.imread(texture_img)
-        img_height, img_width, _ = img.shape
+        img_height, img_width = img.shape[:2]
 
         # build face-->facet mapping
         face2facet_mapping = []
