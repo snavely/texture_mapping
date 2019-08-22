@@ -20,6 +20,7 @@ from satellite_stereo.lib import latlon_utm_converter
 from satellite_stereo.lib import latlonalt_enu_converter
 from satellite_stereo.lib.plyfile import PlyData, PlyElement
 import shutil
+import PIL
 
 
 # Compute the dimensions of a new image resized such that the max
@@ -340,7 +341,7 @@ class FullTextureMapper(object):
 
         return color, depth
 
-    def create_textures(self, image_path, output_prefix):
+    def create_textures(self, image_path, output_prefix, sharpen_images=False):
         num_cameras = len(self.reconstruction.cameras)
         num_facets = self.mesh_facets.size
 
@@ -401,6 +402,12 @@ class FullTextureMapper(object):
 
             image_name_full_path = os.path.join(image_path, image_name)
             image = imageio.imread(image_name_full_path)
+
+            # Optionally sharpen the image.
+            if sharpen_images:
+                image_pil = PIL.Image.fromarray(image)
+                image = np.array(
+                    image_pil.filter(PIL.ImageFilter.UnsharpMask()))
 
             num_facet_indices = np.shape(facet_indices)[0]
             print('Extracting {} textures from image {}'.format(
@@ -657,6 +664,10 @@ def deploy():
                         action='store_true',
                         help='if true, use original skewed'
                              '(non-skew-corrected) images')
+    parser.add_argument('--sharpen_images',
+                        action='store_true',
+                        help='if true, sharpen images prior to '
+                             'creating textures')
     args = parser.parse_args()
 
     texture_mapper = FullTextureMapper(args.mesh, args.aoi,
@@ -670,7 +681,8 @@ def deploy():
         image_path = os.path.join(args.colmap_base_path,
                                   'sfm_perspective/images')
 
-    texture_mapper.create_textures(image_path, args.output)
+    texture_mapper.create_textures(image_path, args.output,
+                                   sharpen_images=args.sharpen_images)
 
 if __name__ == '__main__':
     # test()
