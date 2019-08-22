@@ -21,6 +21,7 @@ from satellite_stereo.lib import latlonalt_enu_converter
 from satellite_stereo.lib.plyfile import PlyData, PlyElement
 import shutil
 
+
 # Compute the dimensions of a new image resized such that the max
 # dimension (width or height) is at most max_dim. Returns a tuple
 # (resized_width, resized_height) and an optional scale factor.
@@ -355,7 +356,6 @@ class FullTextureMapper(object):
             image_name_full_path = os.path.join(image_path, image_name)
             print('Rendering image {}'.format(image_name_full_path))
 
-            image = imageio.imread(image_name_full_path)
             color, depth = self.render_from_camera(camera)
 
             # Debugging output.
