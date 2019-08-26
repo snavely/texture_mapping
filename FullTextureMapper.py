@@ -179,7 +179,7 @@ class Reconstruction(object):
                                    'sfm_pinhole/init_camera_dict.json')
         if use_skewed_images:
             camera_file = os.path.join(recon_path,
-                                       'sfm_perspective/init_camera_dict.json')
+                                       'sfm_perspective/init_ba_camera_dict.json')
 
         with open(camera_file) as fp:
             camera_data = json.load(fp)
