@@ -222,7 +222,6 @@ class FullTextureMapper(object):
         self.reconstruction = Reconstruction(aoi_filename, recon_path,
                                              use_skewed_images)
 
-        trimesh.tol.merge = 1.0e-3
         self.tmesh = trimesh.load(ply_path)
         print('num_vertices: {}'.format(np.shape(self.tmesh.vertices)[0]))
         
@@ -662,14 +661,24 @@ def deploy():
                         '{filename}.ply and {filename}.png')
     parser.add_argument('--use_skewed_images',
                         action='store_true',
-                        help='if true, use original skewed'
+                        help='if true, use original skewed '
                              '(non-skew-corrected) images')
     parser.add_argument('--sharpen_images',
                         action='store_true',
                         help='if true, sharpen images prior to '
                              'creating textures')
+    parser.add_argument('--facet_threshold', type=float, default=5000,
+                        help='Threshold used to group adjacent, nearly '
+                             'co-planar faces into facets to be textured as '
+                             'one. The trimesh library interprets this number '
+                             'as the ratio of (radius / span) ** 2.')
     args = parser.parse_args()
 
+    # Set trimesh constants.
+    trimesh.tol.merge = 1.0e-3
+    trimesh.tol.facet_threshold = args.facet_threshold
+
+    # Initialize the FullTextureMapper class.
     texture_mapper = FullTextureMapper(args.mesh, args.aoi,
                                        args.colmap_base_path,
                                        args.use_skewed_images)
