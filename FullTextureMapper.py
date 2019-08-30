@@ -224,6 +224,8 @@ class FullTextureMapper(object):
 
         self.tmesh = trimesh.load(ply_path)
         print('num_vertices: {}'.format(np.shape(self.tmesh.vertices)[0]))
+        print('number of facets (excluding singletons): {}'.format(
+            np.shape(self.tmesh.facets)[0]))
         
         # Transform vertices from UTM to ENU.
         vertices_enu = self.reconstruction.utm_to_enu(self.tmesh.vertices)
@@ -256,7 +258,7 @@ class FullTextureMapper(object):
         # Recolor each facet with a unique color so we can count it during
         # rendering.
         num_facets = self.mesh_facets.size
-        print('number of facets: {}'.format(num_facets))
+        print('number of facets (including singletons): {}'.format(num_facets))
 
         for facet_index, facet in enumerate(self.mesh_facets):
             # Random trimesh colors have random hue but nearly full saturation
@@ -351,8 +353,7 @@ class FullTextureMapper(object):
 
         facet_uv_coords = {}
 
-        camera_index = 0
-        for image_name, camera in self.reconstruction.cameras.items():
+        for camera_index, (image_name, camera) in enumerate(self.reconstruction.cameras.items()):
             image_name_full_path = os.path.join(image_path, image_name)
             print('Rendering image {}'.format(image_name_full_path))
 
@@ -377,7 +378,6 @@ class FullTextureMapper(object):
                     print('Skipping out-of-range facet_index {}'.format(elem))
 
             sys.stdout.flush()
-            camera_index += 1
 
         # Create a temporary directory for storing a png for each local texture.
         tmpdir = tempfile.mkdtemp()
@@ -394,9 +394,8 @@ class FullTextureMapper(object):
         # the best view for each face.
         best_view_per_facet = np.argmax(facet_pixel_counts, axis=0)
 
-        camera_index = 0
         num_downward_facing_facets = 0
-        for image_name, camera in self.reconstruction.cameras.items():
+        for camera_index, (image_name, camera) in enumerate(self.reconstruction.cameras.items()):
             (facet_indices,) = np.nonzero(best_view_per_facet == camera_index)
 
             image_name_full_path = os.path.join(image_path, image_name)
@@ -425,8 +424,6 @@ class FullTextureMapper(object):
                 uv_coords = self.create_local_texture(
                     camera, facet_index, image, tmpdir)
                 facet_uv_coords[facet_index] = uv_coords
-
-            camera_index += 1
 
         print('{} / {} ({}%) of facets are pointing downward'.
               format(num_downward_facing_facets, num_facets,
