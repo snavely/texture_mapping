@@ -255,6 +255,14 @@ class FullTextureMapper(object):
         # (n,3) float, unit normal vectors of facet plane.
         self.facet_normals = self.tmesh.face_normals[largest_face_index]
 
+        # Compute the areas of the augmented facets for use in
+        # computing texturing statistics.
+        # avoid thrashing the cache inside a loop
+        area_faces = self.tmesh.area_faces
+        self.facet_areas = np.array([sum(area_faces[i])
+                                     for i in self.mesh_facets],
+                                    dtype=np.float64)
+
         # Recolor each facet with a unique color so we can count it during
         # rendering.
         num_facets = self.mesh_facets.size
@@ -342,7 +350,8 @@ class FullTextureMapper(object):
 
         return color, depth
 
-    def create_textures(self, image_path, output_prefix, sharpen_images=False):
+    def create_textures(self, image_path, output_prefix,
+                        sharpen_images=False, verbose=False):
         num_cameras = len(self.reconstruction.cameras)
         num_facets = self.mesh_facets.size
 
@@ -393,6 +402,18 @@ class FullTextureMapper(object):
         # For now, select the view with the maximum projected pixel footprint as
         # the best view for each face.
         best_view_per_facet = np.argmax(facet_pixel_counts, axis=0)
+
+        if verbose:
+            # Compute per-facet resolution statistics.
+            pixels_per_facet = np.max(facet_pixel_counts, axis=0)
+            pixels_per_sq_meter = pixels_per_facet / self.facet_areas
+            for facet_index in range(0, num_facets):
+                if self.facet_normals[facet_index,2] >= -0.9:
+                    print('facet {}: {} pixels per sq. meter '
+                          '(pixels: {}, area: {})'
+                          .format(facet_index, pixels_per_sq_meter[facet_index],
+                                  pixels_per_facet[facet_index],
+                                  self.facet_areas[facet_index]))
 
         num_downward_facing_facets = 0
         for camera_index, (image_name, camera) in enumerate(self.reconstruction.cameras.items()):
@@ -669,6 +690,10 @@ def deploy():
                              'co-planar faces into facets to be textured as '
                              'one. The trimesh library interprets this number '
                              'as the ratio of (radius / span) ** 2.')
+    parser.add_argument('--verbose',
+                        action='store_true',
+                        help='if true, print additional statistics '
+                             'during processing ')
     args = parser.parse_args()
 
     # Set trimesh constants.
@@ -688,7 +713,8 @@ def deploy():
                                   'sfm_perspective/images')
 
     texture_mapper.create_textures(image_path, args.output,
-                                   sharpen_images=args.sharpen_images)
+                                   sharpen_images=args.sharpen_images,
+                                   verbose=args.verbose)
 
 if __name__ == '__main__':
     # test()
