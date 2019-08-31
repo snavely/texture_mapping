@@ -409,6 +409,9 @@ class FullTextureMapper(object):
             pixels_per_sq_meter = pixels_per_facet / self.facet_areas
             for facet_index in range(0, num_facets):
                 if self.facet_normals[facet_index,2] >= -0.9:
+                    print('facet {}: cos angle w.r.t. vertical {}'
+                          .format(facet_index,
+                                  self.facet_normals[facet_index,2]))
                     print('facet {}: {} pixels per sq. meter '
                           '(pixels: {}, area: {})'
                           .format(facet_index, pixels_per_sq_meter[facet_index],
