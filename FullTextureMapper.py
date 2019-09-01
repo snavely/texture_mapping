@@ -347,6 +347,7 @@ class FullTextureMapper(object):
         print('Time to render: {}'.format(elapsed))
 
         self.scene.remove_node(node)
+        renderer.delete()
 
         return color, depth
 
