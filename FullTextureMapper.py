@@ -314,6 +314,7 @@ class FullTextureMapper(object):
         self.scene.add(test_camera, pose=test_camera_pose)
         t = time.time()
         color, depth = renderer.render(self.scene)
+        renderer.delete()
         elapsed = time.time() - t
         print('Time to render: {}'.format(elapsed))
 
