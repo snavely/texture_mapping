@@ -228,8 +228,8 @@ class FullTextureMapper(object):
             np.shape(self.tmesh.facets)[0]))
         
         # Transform vertices from UTM to ENU.
+        self.vertices_utm = self.tmesh.vertices
         vertices_enu = self.reconstruction.utm_to_enu(self.tmesh.vertices)
-        # print('tmesh.vertices_enu: {}'.format(vertices_enu[0:2, :]))
         self.tmesh.vertices = vertices_enu
         # self.tmesh.export('./mesh_enu.ply')
 
@@ -464,7 +464,10 @@ class FullTextureMapper(object):
             facet_uv_coords[facet_index] = (
                 facet_uv_coords[facet_index] + np.array([bbox[0], bbox[1]]))
 
-        print('Assigning per-face texture...')
+        # Replace original UTM vertices.
+        self.tmesh.vertices = self.vertices_utm
+
+        print('Writing textured mesh...')
         FullTextureMapper.write_textured_trimesh(self.tmesh,
                                                  self.mesh_facets,
                                                  facet_uv_coords,
@@ -717,6 +720,7 @@ def deploy():
         image_path = os.path.join(args.colmap_base_path,
                                   'sfm_perspective/images')
 
+    print('Assigning per-face texture...')
     texture_mapper.create_textures(image_path, args.output,
                                    sharpen_images=args.sharpen_images,
                                    verbose=args.verbose)
