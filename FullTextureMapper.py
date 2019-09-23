@@ -222,7 +222,7 @@ class FullTextureMapper(object):
         self.reconstruction = Reconstruction(aoi_filename, recon_path,
                                              use_skewed_images)
 
-        self.tmesh = trimesh.load(ply_path)
+        self.tmesh = trimesh.load(ply_path, process=False)  # don't merge vertices on load
         print('num_vertices: {}'.format(np.shape(self.tmesh.vertices)[0]))
         print('number of facets (excluding singletons): {}'.format(
             np.shape(self.tmesh.facets)[0]))
